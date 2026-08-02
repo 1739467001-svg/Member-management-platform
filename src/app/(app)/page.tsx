@@ -3,9 +3,10 @@ import { QuickEntry } from "@/components/QuickEntry";
 import { ExpiringAlert } from "@/components/ExpiringAlert";
 import { ProfitBars, TrendLine } from "@/components/charts";
 import { Card, CardHeader, EmptyState, PlatformLabel, StatTile, Table, Td, Th } from "@/components/ui";
-import { platformsForParser, listPlatforms } from "@/lib/domain/settings";
+import { AccountLoad } from "@/components/AccountLoad";
+import { platformsForParser, listPlatforms, accountsForParser } from "@/lib/domain/settings";
 import { getExpiringOrders, getWarningOrders, listOrders } from "@/lib/domain/orders";
-import { dailyRevenue, dashboardKpis, summaryFor } from "@/lib/domain/reports";
+import { accountLoad, dailyRevenue, dashboardKpis, summaryFor } from "@/lib/domain/reports";
 import { formatDate, remainingLabel } from "@/lib/date";
 import { pct, yuan, yuanCompact } from "@/lib/format";
 import { ORDER_STATUS_META } from "@/lib/constants";
@@ -19,6 +20,8 @@ export default async function DashboardPage() {
     ...p,
     colorSlot: platformMeta.find((m) => m.id === p.id)?.colorSlot ?? 1,
   }));
+  const accounts = accountsForParser();
+  const load = accountLoad();
 
   const kpi = dashboardKpis();
   const month = summaryFor("month");
@@ -31,11 +34,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <QuickEntry platforms={withSlots} />
+      <QuickEntry platforms={withSlots} accounts={accounts} />
 
       <ExpiringAlert urgent={urgent} warning={warning} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
           label={`${kpi.monthLabel}收入`}
           value={yuanCompact(kpi.revenue)}
@@ -63,7 +66,7 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-5 [&>*]:min-w-0 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           <CardHeader
             title="近 30 天收入"
@@ -95,6 +98,14 @@ export default async function DashboardPage() {
 
       <Card>
         <CardHeader
+          title="账号负载"
+          subtitle="每个会员账号当前带着几位租户，点账号号码可查看它名下的全部订单"
+        />
+        <AccountLoad rows={load} />
+      </Card>
+
+      <Card>
+        <CardHeader
           title="最近订单"
           action={
             <Link href="/orders" className="text-xs text-primary hover:underline">
@@ -108,15 +119,15 @@ export default async function DashboardPage() {
             hint={`试试在上方输入：小陈 爱奇艺 ${new Date().getFullYear()}.8.02 13 老顾客 iphone17 浙江杭州`}
           />
         ) : (
-          <Table>
+          <Table minWidth={0}>
             <thead>
               <tr>
                 <Th>客户</Th>
                 <Th>平台</Th>
                 <Th align="right">价格</Th>
-                <Th>周期</Th>
+                <Th className="hidden md:table-cell">周期</Th>
                 <Th>状态</Th>
-                <Th>设备 / 地区</Th>
+                <Th className="hidden lg:table-cell">设备 / 地区</Th>
               </tr>
             </thead>
             <tbody>
@@ -138,7 +149,7 @@ export default async function DashboardPage() {
                     <Td align="right" className="tnum">
                       {yuan(o.price, 0)}
                     </Td>
-                    <Td className="tnum text-ink-2">
+                    <Td className="hidden whitespace-nowrap tnum text-ink-2 md:table-cell">
                       {formatDate(o.startDate)} – {formatDate(o.endDate)}
                     </Td>
                     <Td>
@@ -155,7 +166,7 @@ export default async function DashboardPage() {
                         <span className="ml-1 text-ink-3">· {remainingLabel(o.daysLeft)}</span>
                       </span>
                     </Td>
-                    <Td className="text-xs text-ink-3">
+                    <Td className="hidden text-xs text-ink-3 lg:table-cell">
                       {[o.device, o.region].filter(Boolean).join(" · ") || "—"}
                     </Td>
                   </tr>

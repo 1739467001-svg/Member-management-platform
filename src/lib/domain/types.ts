@@ -10,6 +10,9 @@ export type OrderView = {
   platformId: string;
   platformName: string;
   colorSlot: number;
+  /** 该客户用的会员账号（手机号前缀），未指定时为 null */
+  accountId: string | null;
+  accountLabel: string | null;
   price: number;
   suggestedPrice: number | null;
   startDate: string;
@@ -54,6 +57,33 @@ export type PlatformStat = {
   cost: number;
   profit: number;
   margin: number;
+};
+
+/** 账号维度的收支。一份账号成本服务多位租户，这一层最能看出账号值不值 */
+export type AccountStat = {
+  accountId: string;
+  label: string;
+  orders: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  margin: number;
+  active: boolean;
+};
+
+/** 账号当前的负载：某账号在某平台上还有几位租户在用 */
+export type AccountLoadRow = {
+  accountId: string;
+  label: string;
+  active: boolean;
+  /** 平台 → 在租人数 */
+  byPlatform: Array<{
+    platformId: string;
+    platformName: string;
+    colorSlot: number;
+    renters: number;
+  }>;
+  totalRenters: number;
 };
 
 export type PeriodSummary = {

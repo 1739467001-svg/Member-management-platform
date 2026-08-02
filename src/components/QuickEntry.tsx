@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { parseBatch, type ParsedCost, type ParsedOrder, type PlatformLite } from "@/lib/parser";
+import {
+  parseBatch,
+  type AccountLite,
+  type ParsedCost,
+  type ParsedOrder,
+  type PlatformLite,
+} from "@/lib/parser";
 import { computeEndDate, daysRemaining, remainingLabel } from "@/lib/date";
 import { yuan } from "@/lib/format";
 import { TIER_META, type CustomerTier } from "@/lib/constants";
@@ -76,7 +82,13 @@ function TextInput({
 
 /* ── 主体 ───────────────────────────────────────────── */
 
-export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { colorSlot: number }> }) {
+export function QuickEntry({
+  platforms,
+  accounts,
+}: {
+  platforms: Array<PlatformLite & { colorSlot: number }>;
+  accounts: AccountLite[];
+}) {
   const [text, setText] = useState("");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [lookups, setLookups] = useState<Record<string, Lookup>>({});
@@ -97,13 +109,13 @@ export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { co
       return;
     }
     parseTimer.current = setTimeout(() => {
-      setDrafts(parseBatch(text, platformLite).map((d) => ({ ...d, uid: nextUid() })));
+      setDrafts(parseBatch(text, platformLite, accounts).map((d) => ({ ...d, uid: nextUid() })));
       setMessage(null);
     }, 250);
     return () => {
       if (parseTimer.current) clearTimeout(parseTimer.current);
     };
-  }, [text, platformLite]);
+  }, [text, platformLite, accounts]);
 
   // 客户身份回显：拿到姓名 + 平台就去查历史
   useEffect(() => {
@@ -159,6 +171,7 @@ export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { co
             customerName: d.customerName!,
             customerId: lookups[key]?.customerId ?? null,
             platformId: d.platformId!,
+            accountId: d.accountId,
             price: d.price!,
             startDate: d.startDate!,
             durationDays: d.durationDays,
@@ -175,6 +188,7 @@ export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { co
         .filter((d): d is { uid: string } & ParsedCost => d.kind === "cost")
         .map((d) => ({
           platformId: d.platformId!,
+          accountId: d.accountId,
           amount: d.amount!,
           costDate: d.costDate!,
           periodDays: d.periodDays,
@@ -245,6 +259,7 @@ export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { co
                   key={d.uid}
                   draft={d}
                   platforms={platforms}
+                  accounts={accounts}
                   lookup={lookups[`${d.customerName}|${d.platformId}`] ?? null}
                   onPatch={(c) => patch(d.uid, c)}
                   onRemove={() => remove(d.uid)}
@@ -254,6 +269,7 @@ export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { co
                   key={d.uid}
                   draft={d}
                   platforms={platforms}
+                  accounts={accounts}
                   onPatch={(c) => patch(d.uid, c)}
                   onRemove={() => remove(d.uid)}
                 />
@@ -297,12 +313,14 @@ export function QuickEntry({ platforms }: { platforms: Array<PlatformLite & { co
 function OrderCard({
   draft,
   platforms,
+  accounts,
   lookup,
   onPatch,
   onRemove,
 }: {
   draft: { uid: string } & ParsedOrder;
   platforms: Array<PlatformLite & { colorSlot: number }>;
+  accounts: AccountLite[];
   lookup: Lookup;
   onPatch: (changes: Record<string, unknown>) => void;
   onRemove: () => void;
@@ -330,6 +348,12 @@ function OrderCard({
               style={{ background: `var(--series-${((slot - 1) % 5) + 1})` }}
             />
             {platforms.find((p) => p.id === draft.platformId)?.name}
+          </span>
+        )}
+
+        {draft.accountId && (
+          <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium text-ink-2">
+            账号 {accounts.find((a) => a.id === draft.accountId)?.label}
           </span>
         )}
 
@@ -438,6 +462,21 @@ function OrderCard({
           </select>
         </Field>
 
+        <Field label="会员账号" hint={draft.accountId ? undefined : "未指定"}>
+          <select
+            value={draft.accountId ?? ""}
+            onChange={(e) => onPatch({ accountId: e.target.value || null })}
+            className={`${inputCls} border-line`}
+          >
+            <option value="">未指定</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
         <Field label="设备">
           <TextInput
             value={draft.device}
@@ -473,11 +512,13 @@ function OrderCard({
 function CostCard({
   draft,
   platforms,
+  accounts,
   onPatch,
   onRemove,
 }: {
   draft: { uid: string } & ParsedCost;
   platforms: Array<PlatformLite & { colorSlot: number }>;
+  accounts: AccountLite[];
   onPatch: (changes: Record<string, unknown>) => void;
   onRemove: () => void;
 }) {
@@ -511,6 +552,21 @@ function CostCard({
             {platforms.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="会员账号" hint={draft.accountId ? undefined : "未指定"}>
+          <select
+            value={draft.accountId ?? ""}
+            onChange={(e) => onPatch({ accountId: e.target.value || null })}
+            className={`${inputCls} border-line`}
+          >
+            <option value="">未指定</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
               </option>
             ))}
           </select>

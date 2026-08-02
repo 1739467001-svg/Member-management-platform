@@ -43,6 +43,13 @@ export const DEFAULT_PRICE_RULES: Record<string, { new: number; returning: numbe
 
 export const PLATFORM_IDS = DEFAULT_PLATFORMS.map((p) => p.id);
 
+/**
+ * 预置会员账号。命名规则：取注册手机号前三位；前三位相同时补到第四位。
+ * 目前在用 178 / 1815 / 181 / 135（1815 与 181 前三位相同，故 1815 补到四位）。
+ * 账号可在设置页增删改；将来裁撤的账号停用即可，历史订单不受影响。
+ */
+export const DEFAULT_ACCOUNTS = ["178", "1815", "181", "135"];
+
 /** 卡种 → 天数 */
 export const DURATION_PRESETS = {
   day: 1,

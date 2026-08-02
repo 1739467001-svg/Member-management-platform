@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import * as schema from "./schema";
-import { DEFAULT_PLATFORMS, DEFAULT_PRICE_RULES } from "../constants";
+import { DEFAULT_ACCOUNTS, DEFAULT_PLATFORMS, DEFAULT_PRICE_RULES } from "../constants";
 import { hashPassword } from "../auth/password";
 
 /**
@@ -24,6 +24,16 @@ CREATE TABLE IF NOT EXISTS platform (
   sort_order  INTEGER NOT NULL DEFAULT 0,
   active      INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS account (
+  id          TEXT PRIMARY KEY,
+  label       TEXT NOT NULL,
+  note        TEXT NOT NULL DEFAULT '',
+  active      INTEGER NOT NULL DEFAULT 1,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_label ON account(label);
 
 CREATE TABLE IF NOT EXISTS customer (
   id              TEXT PRIMARY KEY,
@@ -83,6 +93,7 @@ CREATE TABLE IF NOT EXISTS cost_record (
 );
 CREATE INDEX IF NOT EXISTS idx_cost_platform ON cost_record(platform_id);
 CREATE INDEX IF NOT EXISTS idx_cost_date     ON cost_record(cost_date);
+CREATE INDEX IF NOT EXISTS idx_order_account ON rental_order(account_id);
 
 CREATE TABLE IF NOT EXISTS price_rule (
   id             TEXT PRIMARY KEY,
@@ -115,10 +126,29 @@ function createConnection() {
 
   const sqlite = new Database(dbPath);
   sqlite.exec(DDL);
+  migrate(sqlite);
 
   const db = drizzle(sqlite, { schema });
   seed(sqlite);
   return { sqlite, db };
+}
+
+/**
+ * 增量迁移：CREATE TABLE IF NOT EXISTS 只能新建表，管不了给已有表加列。
+ * 已经在跑的库升级到新版本时，靠这里补齐字段。
+ */
+function migrate(sqlite: Database.Database) {
+  const hasColumn = (table: string, column: string) =>
+    (sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some(
+      (c) => c.name === column,
+    );
+
+  if (!hasColumn("cost_record", "account_id")) {
+    sqlite.exec(`ALTER TABLE cost_record ADD COLUMN account_id TEXT`);
+  }
+  if (!hasColumn("rental_order", "account_id")) {
+    sqlite.exec(`ALTER TABLE rental_order ADD COLUMN account_id TEXT`);
+  }
 }
 
 /** 首次启动写入预置数据；已存在则跳过，可重复执行 */
@@ -134,10 +164,18 @@ function seed(sqlite: Database.Database) {
   const insertSetting = sqlite.prepare(
     `INSERT OR IGNORE INTO app_setting (key, value) VALUES (?, ?)`,
   );
+  const insertAccount = sqlite.prepare(
+    `INSERT OR IGNORE INTO account (id, label, note, active, sort_order, created_at)
+     VALUES (?, ?, ?, 1, ?, ?)`,
+  );
 
   sqlite.transaction(() => {
     DEFAULT_PLATFORMS.forEach((p, i) => {
       insertPlatform.run(p.id, p.name, p.aliases.join(","), p.colorSlot, i);
+    });
+
+    DEFAULT_ACCOUNTS.forEach((label, i) => {
+      insertAccount.run(`acc-${label}`, label, "", i, Date.now());
     });
 
     for (const [platformId, prices] of Object.entries(DEFAULT_PRICE_RULES)) {

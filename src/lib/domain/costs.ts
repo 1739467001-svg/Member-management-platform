@@ -8,6 +8,8 @@ export type CostView = {
   platformId: string;
   platformName: string;
   colorSlot: number;
+  accountId: string | null;
+  accountLabel: string | null;
   amount: number;
   costDate: string;
   periodDays: number;
@@ -18,14 +20,17 @@ export type CostView = {
 
 const COST_SELECT = `
   SELECT r.id, r.platform_id AS platformId, p.name AS platformName, p.color_slot AS colorSlot,
+         r.account_id AS accountId, a.label AS accountLabel,
          r.amount, r.cost_date AS costDate, r.period_days AS periodDays,
          r.category, r.note, r.created_at AS createdAt
   FROM cost_record r
   JOIN platform p ON p.id = r.platform_id
+  LEFT JOIN account a ON a.id = r.account_id
 `;
 
 export type CreateCostInput = {
   platformId: string;
+  accountId?: string | null;
   amount: number;
   costDate: string;
   periodDays?: number;
@@ -40,6 +45,7 @@ export function createCost(input: CreateCostInput): string {
     .values({
       id,
       platformId: input.platformId,
+      accountId: input.accountId ?? null,
       amount: input.amount,
       costDate: input.costDate,
       periodDays: input.periodDays ?? 30,

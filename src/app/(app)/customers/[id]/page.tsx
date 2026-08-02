@@ -52,7 +52,7 @@ export default async function CustomerDetailPage({
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile label="优质度评分" value={customer.score} hint={`满分 100`} />
         <StatTile label="累计消费" value={yuan(customer.totalRevenue, 0)} />
         <StatTile label="订单总数" value={customer.totalOrders} hint={`在租 ${customer.activeOrders}`} />
@@ -60,7 +60,7 @@ export default async function CustomerDetailPage({
         <StatTile label="单均价" value={yuan(avgPrice, 1)} hint={`${customer.platformCount} 个平台`} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.6fr]">
+      <div className="grid gap-5 [&>*]:min-w-0 lg:grid-cols-[1fr_1.6fr]">
         <div className="space-y-5">
           <Card>
             <CardHeader title="评分构成" subtitle="五个维度加权得出，权重可在代码中调整" />
@@ -118,14 +118,14 @@ export default async function CustomerDetailPage({
               customer.lastOrderAt ? formatDate(customer.lastOrderAt) : "—"
             }`}
           />
-          <Table>
+          <Table minWidth={0}>
             <thead>
               <tr>
                 <Th>平台</Th>
                 <Th align="right">价格</Th>
-                <Th>周期</Th>
+                <Th className="hidden sm:table-cell">周期</Th>
                 <Th>状态</Th>
-                <Th>身份</Th>
+                <Th className="hidden lg:table-cell">身份</Th>
                 <Th align="right">操作</Th>
               </tr>
             </thead>
@@ -140,7 +140,7 @@ export default async function CustomerDetailPage({
                     <Td align="right" className="tnum">
                       {yuan(o.price, 0)}
                     </Td>
-                    <Td className="whitespace-nowrap tnum text-xs text-ink-2">
+                    <Td className="hidden whitespace-nowrap tnum text-xs text-ink-2 sm:table-cell">
                       {formatDate(o.startDate)} – {formatDate(o.endDate)}
                     </Td>
                     <Td>
@@ -156,7 +156,7 @@ export default async function CustomerDetailPage({
                         {remainingLabel(o.daysLeft)}
                       </span>
                     </Td>
-                    <Td className="text-xs text-ink-2">
+                    <Td className="hidden text-xs text-ink-2 lg:table-cell">
                       {o.customerType === "returning" ? "老顾客" : "新顾客"}
                       {o.renewedFromId && <span className="ml-1 text-[10px] text-ink-3">续</span>}
                     </Td>

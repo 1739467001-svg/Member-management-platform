@@ -1,8 +1,8 @@
 import "server-only";
-import { sqlite, db, platforms, priceRules } from "../db";
+import { sqlite, db, platforms, priceRules, accounts } from "../db";
 import { eq, and } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "../auth/password";
-import type { Platform } from "../db/schema";
+import type { Account, Platform } from "../db/schema";
 
 export function getSetting(key: string): string | null {
   const row = sqlite.prepare(`SELECT value FROM app_setting WHERE key = ?`).get(key) as
@@ -49,6 +49,46 @@ export function updatePlatform(
   patch: Partial<{ name: string; aliases: string; active: number }>,
 ): void {
   db.update(platforms).set(patch).where(eq(platforms.id, id)).run();
+}
+
+/* ── 会员账号 ───────────────────────────────────────── */
+
+export function listAccounts(includeInactive = false): Account[] {
+  return db
+    .select()
+    .from(accounts)
+    .all()
+    .filter((a) => includeInactive || a.active === 1)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+}
+
+/** 解析器需要的轻量形态。停用的账号不参与识别，避免录到已裁撤的号上 */
+export function accountsForParser() {
+  return listAccounts().map((a) => ({ id: a.id, label: a.label }));
+}
+
+export function createAccount(label: string, note = ""): string {
+  const trimmed = label.trim();
+  const id = `acc-${trimmed}`;
+  db.insert(accounts)
+    .values({
+      id,
+      label: trimmed,
+      note,
+      active: 1,
+      sortOrder: listAccounts(true).length,
+      createdAt: Date.now(),
+    })
+    .onConflictDoNothing()
+    .run();
+  return id;
+}
+
+export function updateAccount(
+  id: string,
+  patch: Partial<{ label: string; note: string; active: number }>,
+): void {
+  db.update(accounts).set(patch).where(eq(accounts.id, id)).run();
 }
 
 /* ── 定价规则 ───────────────────────────────────────── */

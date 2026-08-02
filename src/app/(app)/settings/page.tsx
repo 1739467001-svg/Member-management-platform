@@ -1,7 +1,13 @@
 import { Card, CardHeader, PageHeader, PlatformLabel, Table, Td, Th } from "@/components/ui";
 import { PasswordForm } from "./PasswordForm";
-import { getPriceTable, getSetting, listPlatforms } from "@/lib/domain/settings";
-import { savePlatformAction, savePricesAction, runDailyAction } from "@/app/actions";
+import { getPriceTable, getSetting, listAccounts, listPlatforms } from "@/lib/domain/settings";
+import {
+  createAccountAction,
+  saveAccountAction,
+  savePlatformAction,
+  savePricesAction,
+  runDailyAction,
+} from "@/app/actions";
 import { ALERT_THRESHOLD_DAYS, WARN_THRESHOLD_DAYS } from "@/lib/constants";
 import { TZ, today } from "@/lib/date";
 
@@ -10,13 +16,14 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const prices = getPriceTable();
   const platforms = listPlatforms(true);
+  const accounts = listAccounts(true);
   const lastRun = getSetting("lastDailyRun");
 
   return (
     <div>
       <PageHeader title="系统设置" subtitle="定价策略、平台别名、账号安全与每日任务" />
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 [&>*]:min-w-0 lg:grid-cols-2">
         <Card>
           <CardHeader
             title="定价规则"
@@ -99,6 +106,75 @@ export default async function SettingsPage() {
                 </form>
               ))}
             </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="会员账号"
+              subtitle="取注册手机号前三位命名；前三位撞车时补到第四位（如 181 / 1815）"
+            />
+            <div className="space-y-2.5">
+              {accounts.map((a) => (
+                <form
+                  key={a.id}
+                  action={saveAccountAction}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-page/50 p-2"
+                >
+                  <input type="hidden" name="id" value={a.id} />
+                  <input
+                    name="label"
+                    defaultValue={a.label}
+                    className="w-20 shrink-0 rounded-md border border-line bg-page px-2 py-1.5 text-center font-mono text-xs outline-none focus:border-primary tnum"
+                  />
+                  <input
+                    name="note"
+                    defaultValue={a.note}
+                    placeholder="备注，如主力号 / 待裁撤"
+                    className="min-w-0 flex-1 rounded-md border border-line bg-page px-2 py-1.5 text-[11px] outline-none focus:border-primary"
+                  />
+                  <label className="flex shrink-0 items-center gap-1 text-[11px] text-ink-2">
+                    <input
+                      type="checkbox"
+                      name="active"
+                      defaultChecked={a.active === 1}
+                      className="size-3.5 accent-[var(--primary)]"
+                    />
+                    启用
+                  </label>
+                  <button
+                    type="submit"
+                    className="shrink-0 rounded-md border border-line px-2 py-1.5 text-[11px] text-ink-2 hover:border-primary hover:text-primary"
+                  >
+                    保存
+                  </button>
+                </form>
+              ))}
+            </div>
+
+            <form action={createAccountAction} className="mt-3 flex gap-2 border-t border-line pt-3">
+              <input
+                name="label"
+                required
+                placeholder="新账号，如 136"
+                className="w-28 shrink-0 rounded-md border border-line bg-page px-2 py-1.5 text-center font-mono text-xs outline-none focus:border-primary tnum"
+              />
+              <input
+                name="note"
+                placeholder="备注（可留空）"
+                className="min-w-0 flex-1 rounded-md border border-line bg-page px-2 py-1.5 text-[11px] outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-ink hover:bg-primary-hover"
+              >
+                添加
+              </button>
+            </form>
+
+            <p className="mt-2 text-[11px] text-ink-3">
+              账号裁撤时取消「启用」即可：它不再出现在录入下拉和文字识别里，
+              但名下的历史订单与成本照常保留在报表中。
+            </p>
           </Card>
 
           <Card>

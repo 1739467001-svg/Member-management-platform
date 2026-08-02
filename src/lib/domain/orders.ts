@@ -24,6 +24,7 @@ const ORDER_SELECT = `
   SELECT o.id, o.customer_id AS customerId, c.name AS customerName,
          c.tier AS customerTier, c.score AS customerScore,
          o.platform_id AS platformId, p.name AS platformName, p.color_slot AS colorSlot,
+         o.account_id AS accountId, a.label AS accountLabel,
          o.price, o.suggested_price AS suggestedPrice,
          o.start_date AS startDate, o.end_date AS endDate,
          o.duration_days AS durationDays, o.duration_type AS durationType,
@@ -32,6 +33,7 @@ const ORDER_SELECT = `
   FROM rental_order o
   JOIN customer c ON c.id = o.customer_id
   JOIN platform p ON p.id = o.platform_id
+  LEFT JOIN account a ON a.id = o.account_id
 `;
 
 type RawOrderRow = Omit<OrderView, "status" | "daysLeft"> & { createdAt: number };
@@ -44,6 +46,7 @@ function decorate(row: RawOrderRow): OrderView {
 export type OrderFilters = {
   status?: OrderStatus | "all";
   platformId?: string;
+  accountId?: string;
   customerId?: string;
   search?: string;
   limit?: number;
@@ -57,14 +60,20 @@ export function listOrders(filters: OrderFilters = {}): OrderView[] {
     where.push("o.platform_id = ?");
     params.push(filters.platformId);
   }
+  if (filters.accountId) {
+    where.push("o.account_id = ?");
+    params.push(filters.accountId);
+  }
   if (filters.customerId) {
     where.push("o.customer_id = ?");
     params.push(filters.customerId);
   }
   if (filters.search) {
-    where.push("(c.name LIKE ? OR o.note LIKE ? OR o.region LIKE ? OR o.device LIKE ?)");
+    where.push(
+      "(c.name LIKE ? OR o.note LIKE ? OR o.region LIKE ? OR o.device LIKE ? OR a.label LIKE ?)",
+    );
     const like = `%${filters.search}%`;
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like);
   }
 
   const sql =
@@ -228,6 +237,7 @@ export type CreateOrderInput = {
   customerName: string;
   customerId?: string | null;
   platformId: string;
+  accountId?: string | null;
   price: number;
   startDate: string;
   durationDays: number;
@@ -271,7 +281,7 @@ export function createOrder(input: CreateOrderInput): string {
       note: input.note ?? "",
       suggestedPrice: suggested,
       renewedFromId: input.renewedFromId ?? null,
-      accountId: null,
+      accountId: input.accountId ?? null,
       rawText: input.rawText ?? "",
       createdAt: now,
       updatedAt: now,
@@ -293,6 +303,7 @@ export function updateOrder(
     region: string;
     note: string;
     durationType: string;
+    accountId: string | null;
   }>,
 ): void {
   const current = db.select().from(rentalOrders).where(eq(rentalOrders.id, id)).get();
@@ -335,6 +346,8 @@ export function renewOrder(orderId: string, overrides: { price?: number } = {}):
     customerName: prev.customerName,
     customerId: prev.customerId,
     platformId: prev.platformId,
+    // 续费默认还用同一个账号，客户不用换登录方式
+    accountId: prev.accountId,
     price: overrides.price ?? suggested ?? prev.price,
     startDate: start,
     durationDays: prev.durationDays,

@@ -113,17 +113,21 @@ export default async function CustomersPage({
         {customers.length === 0 ? (
           <EmptyState title="没有符合条件的客户" hint="客户档案会在录入订单时自动建立" />
         ) : (
-          <Table>
+          <Table minWidth={0}>
             <thead>
               <tr>
                 <Th>客户</Th>
-                <Th align="right">评分</Th>
+                <Th align="right" className="hidden sm:table-cell">
+                  评分
+                </Th>
                 <Th>分层</Th>
                 <Th align="right">订单</Th>
-                <Th align="right">续费</Th>
+                <Th align="right" className="hidden lg:table-cell">
+                  续费
+                </Th>
                 <Th align="right">累计消费</Th>
-                <Th>最近下单</Th>
-                <Th>标签</Th>
+                <Th className="hidden lg:table-cell">最近下单</Th>
+                <Th className="hidden md:table-cell">标签</Th>
               </tr>
             </thead>
             <tbody>
@@ -140,12 +144,15 @@ export default async function CustomersPage({
                       {[c.region, c.device].filter(Boolean).join(" · ") || "—"}
                     </p>
                   </Td>
-                  <Td align="right">
+                  <Td align="right" className="hidden sm:table-cell">
                     <ScoreBar score={c.score} />
                   </Td>
                   <Td>
                     <span className="whitespace-nowrap text-xs text-ink-2">
                       {TIER_META[c.tier].icon} {TIER_META[c.tier].label}
+                    </span>
+                    <span className="block text-[10px] text-ink-3 tnum sm:hidden">
+                      {c.score} 分
                     </span>
                   </Td>
                   <Td align="right" className="tnum">
@@ -154,16 +161,16 @@ export default async function CustomersPage({
                       <span className="ml-1 text-[10px] text-good">在租{c.activeOrders}</span>
                     )}
                   </Td>
-                  <Td align="right" className="tnum text-ink-2">
+                  <Td align="right" className="hidden tnum text-ink-2 lg:table-cell">
                     {c.renewalCount}
                   </Td>
                   <Td align="right" className="tnum font-medium">
                     {yuan(c.totalRevenue, 0)}
                   </Td>
-                  <Td className="tnum text-xs text-ink-3">
+                  <Td className="hidden tnum text-xs text-ink-3 lg:table-cell">
                     {c.lastOrderAt ? formatDate(c.lastOrderAt) : "—"}
                   </Td>
-                  <Td>
+                  <Td className="hidden md:table-cell">
                     <div className="flex flex-wrap gap-1">
                       {c.tags.map((tag) => (
                         <Badge

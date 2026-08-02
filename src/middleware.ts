@@ -23,6 +23,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 放行静态资源与定时任务端点（后者用 token 单独鉴权）
-  matcher: ["/((?!api/cron|_next/static|_next/image|favicon.ico|.*\\.svg).*)"],
+  /**
+   * 放行定时任务端点（它用 token 单独鉴权）与全部静态资源。
+   * 图标和 manifest 必须放行：浏览器是匿名去取它们的，
+   * 若被重定向到登录页，「添加到主屏幕」就装不上图标。
+   */
+  matcher: [
+    "/((?!api/cron|_next/static|_next/image|favicon\\.ico|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

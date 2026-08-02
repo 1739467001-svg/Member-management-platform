@@ -2,9 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { SESSION_COOKIE, SESSION_MAX_AGE, createSessionToken } from "@/lib/auth/session";
-import { checkPassword, changePassword, setPrice, updatePlatform } from "@/lib/domain/settings";
+import {
+  checkPassword,
+  changePassword,
+  createAccount,
+  setPrice,
+  updateAccount,
+  updatePlatform,
+} from "@/lib/domain/settings";
 import {
   createOrder,
   deleteOrder,
@@ -27,6 +34,28 @@ function refreshAll() {
 
 /* ── 登录 ───────────────────────────────────────────── */
 
+/**
+ * 会话 Cookie 是否加 Secure 标记。
+ *
+ * 不能简单用 NODE_ENV 判断：生产环境如果还没配 HTTPS（比如刚部署完直接用
+ * http://服务器IP:3000 访问），带 Secure 的 Cookie 会被浏览器直接丢掉，
+ * 表现就是「输对密码也一直跳回登录页」。localhost 是个例外，浏览器把它
+ * 当可信来源，所以本地测不出这个问题。
+ *
+ * 这里按请求的实际协议来判断：走了 HTTPS（或反代透传了 x-forwarded-proto:https）
+ * 才加 Secure；纯 HTTP 就不加，保证能登进去。
+ */
+async function shouldUseSecureCookie(): Promise<boolean> {
+  // 需要强制时用 COOKIE_SECURE 显式覆盖
+  if (process.env.COOKIE_SECURE === "true") return true;
+  if (process.env.COOKIE_SECURE === "false") return false;
+
+  const proto = (await headers()).get("x-forwarded-proto")?.split(",")[0].trim();
+
+  // 有反代头就照它说的办；没有就说明是直连 HTTP，不能加 Secure
+  return proto === "https";
+}
+
 export async function loginAction(_prev: unknown, formData: FormData) {
   const password = String(formData.get("password") ?? "");
   if (!password) return { error: "请输入密码" };
@@ -36,7 +65,7 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   jar.set(SESSION_COOKIE, await createSessionToken(), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await shouldUseSecureCookie(),
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });
@@ -55,6 +84,7 @@ export type DraftOrder = {
   customerName: string;
   customerId?: string | null;
   platformId: string;
+  accountId?: string | null;
   price: number;
   startDate: string;
   durationDays: number;
@@ -68,6 +98,7 @@ export type DraftOrder = {
 
 export type DraftCost = {
   platformId: string;
+  accountId?: string | null;
   amount: number;
   costDate: string;
   periodDays?: number;
@@ -128,10 +159,12 @@ export async function lookupCustomerAction(name: string, platformId: string) {
 
 export async function updateOrderAction(formData: FormData) {
   const id = String(formData.get("id"));
+  const accountId = String(formData.get("accountId") ?? "");
   updateOrder(id, {
     price: Number(formData.get("price")),
     startDate: String(formData.get("startDate")),
     durationDays: Number(formData.get("durationDays")),
+    accountId: accountId || null,
     device: String(formData.get("device") ?? ""),
     region: String(formData.get("region") ?? ""),
     note: String(formData.get("note") ?? ""),
@@ -154,8 +187,10 @@ export async function renewOrderAction(formData: FormData) {
 /* ── 成本 ───────────────────────────────────────────── */
 
 export async function createCostAction(formData: FormData) {
+  const accountId = String(formData.get("accountId") ?? "");
   createCost({
     platformId: String(formData.get("platformId")),
+    accountId: accountId || null,
     amount: Number(formData.get("amount")),
     costDate: String(formData.get("costDate")),
     periodDays: Number(formData.get("periodDays") ?? 30),
@@ -190,6 +225,25 @@ export async function savePricesAction(formData: FormData) {
       setPrice(match[1], match[2] as "new" | "returning", price);
     }
   }
+  revalidatePath("/settings");
+  refreshAll();
+}
+
+export async function createAccountAction(formData: FormData) {
+  const label = String(formData.get("label") ?? "").trim();
+  if (!label) return;
+  createAccount(label, String(formData.get("note") ?? ""));
+  revalidatePath("/settings");
+  refreshAll();
+}
+
+export async function saveAccountAction(formData: FormData) {
+  updateAccount(String(formData.get("id")), {
+    label: String(formData.get("label") ?? "").trim(),
+    note: String(formData.get("note") ?? ""),
+    // 停用后不再出现在录入下拉与解析词典里，历史订单保持不变
+    active: formData.get("active") === "on" ? 1 : 0,
+  });
   revalidatePath("/settings");
   refreshAll();
 }

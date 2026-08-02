@@ -33,23 +33,23 @@ const PRICES = {
  * endsIn 直接决定了到期提醒列表：≤1 天进红色区，2–3 天进橙色区。
  */
 const PEOPLE = [
-  { name: "小陈", region: "浙江杭州", device: "iPhone17", note: "一直很守时，介绍过朋友", plans: [{ platform: "iqiyi", endsIn: 1, cycles: 5 }] },
-  { name: "小李", region: "广东深圳", device: "华为Mate70", note: "回复很快", plans: [{ platform: "tencent", endsIn: 0, cycles: 3 }] },
+  { name: "小陈", region: "浙江杭州", device: "iPhone17", note: "一直很守时，介绍过朋友", plans: [{ platform: "iqiyi", endsIn: 1, cycles: 5, account: "178" }] },
+  { name: "小李", region: "广东深圳", device: "华为Mate70", note: "回复很快", plans: [{ platform: "tencent", endsIn: 0, cycles: 3, account: "1815" }] },
   { name: "林姐", region: "上海", device: "iPad", note: "大客户，三个平台都在租", plans: [
-    { platform: "iqiyi", endsIn: 29, cycles: 4 },
-    { platform: "tencent", endsIn: 28, cycles: 2 },
-    { platform: "mango", endsIn: 30, cycles: 1 },
+    { platform: "iqiyi", endsIn: 29, cycles: 4, account: "178" },
+    { platform: "tencent", endsIn: 28, cycles: 2, account: "1815" },
+    { platform: "mango", endsIn: 30, cycles: 1, account: "135" },
   ] },
   { name: "老张", region: "江苏南京", device: "电视", note: "老客户，家里老人看", plans: [
-    { platform: "youku", endsIn: 3, cycles: 3 },
-    { platform: "iqiyi", endsIn: 18, cycles: 1 },
+    { platform: "youku", endsIn: 3, cycles: 3, account: "181" },
+    { platform: "iqiyi", endsIn: 18, cycles: 1, account: "178" },
   ] },
-  { name: "王五", region: "北京", device: "小米15", note: "", plans: [{ platform: "bilibili", endsIn: 27, cycles: 3 }] },
-  { name: "小吴", region: "浙江宁波", device: "Mac", note: "学生党，价格敏感", plans: [{ platform: "bilibili", endsIn: 2, cycles: 2 }] },
-  { name: "阿明", region: "四川成都", device: "OPPO", note: "", plans: [{ platform: "tencent", endsIn: 26, cycles: 2 }] },
-  { name: "赵六", region: "湖南长沙", device: "iPad", note: "朋友介绍来的", plans: [{ platform: "mango", endsIn: 24, cycles: 1 }] },
-  { name: "小周", region: "北京", device: "iPhone16", note: "新客户，首单", plans: [{ platform: "iqiyi", endsIn: 29, cycles: 1 }] },
-  { name: "陈九", region: "福建厦门", device: "PC", note: "到期后没再续，可回访", plans: [{ platform: "youku", endsIn: -20, cycles: 1 }] },
+  { name: "王五", region: "北京", device: "小米15", note: "", plans: [{ platform: "bilibili", endsIn: 27, cycles: 3, account: "181" }] },
+  { name: "小吴", region: "浙江宁波", device: "Mac", note: "学生党，价格敏感", plans: [{ platform: "bilibili", endsIn: 2, cycles: 2, account: "181" }] },
+  { name: "阿明", region: "四川成都", device: "OPPO", note: "", plans: [{ platform: "tencent", endsIn: 26, cycles: 2, account: "1815" }] },
+  { name: "赵六", region: "湖南长沙", device: "iPad", note: "朋友介绍来的", plans: [{ platform: "mango", endsIn: 24, cycles: 1, account: "135" }] },
+  { name: "小周", region: "北京", device: "iPhone16", note: "新客户，首单", plans: [{ platform: "iqiyi", endsIn: 29, cycles: 1, account: "178" }] },
+  { name: "陈九", region: "福建厦门", device: "PC", note: "到期后没再续，可回访", plans: [{ platform: "youku", endsIn: -20, cycles: 1, account: "181" }] },
 ];
 
 const now = Date.now();
@@ -64,12 +64,12 @@ const insertOrder = db.prepare(
   `INSERT INTO rental_order (id, customer_id, platform_id, price, start_date, duration_days,
      end_date, duration_type, customer_type, device, region, note, suggested_price,
      renewed_from_id, account_id, raw_text, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, 30, ?, 'month', ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+   VALUES (?, ?, ?, ?, ?, 30, ?, 'month', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
 const insertCost = db.prepare(
-  `INSERT INTO cost_record (id, platform_id, amount, cost_date, period_days, category, note, raw_text, created_at)
-   VALUES (?, ?, ?, ?, 30, 'membership', ?, '', ?)`,
+  `INSERT INTO cost_record (id, platform_id, account_id, amount, cost_date, period_days, category, note, raw_text, created_at)
+   VALUES (?, ?, ?, ?, ?, 30, 'membership', ?, '', ?)`,
 );
 
 const existing = db.prepare(`SELECT COUNT(*) AS n FROM rental_order`).get();
@@ -112,6 +112,7 @@ db.transaction(() => {
           i === 0 ? person.note : "",
           price[type],
           previousId,
+          plan.account ? `acc-${plan.account}` : null,
           `${person.name} ${plan.platform} ${startDate} ${price[type]}`,
           now,
           now,
@@ -124,7 +125,14 @@ db.transaction(() => {
   }
 
   // 成本：每个平台每月 1 号续一次月卡，覆盖最近 5 个月
-  const COST = { iqiyi: 30, tencent: 33, bilibili: 25, mango: 20, youku: 26 };
+  // 每个平台的会员开在哪个账号上，成本就记到那个号
+  const COST = [
+    { platform: "iqiyi", account: "178", amount: 30 },
+    { platform: "tencent", account: "1815", amount: 33 },
+    { platform: "bilibili", account: "181", amount: 25 },
+    { platform: "mango", account: "135", amount: 20 },
+    { platform: "youku", account: "181", amount: 26 },
+  ];
   const firstOfMonth = (monthsAgo) => {
     const d = new Date(todayMs);
     return iso(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - monthsAgo, 1));
@@ -132,10 +140,11 @@ db.transaction(() => {
   let costCount = 0;
   for (let monthsAgo = 4; monthsAgo >= 0; monthsAgo--) {
     const date = firstOfMonth(monthsAgo);
-    for (const [platform, amount] of Object.entries(COST)) {
+    for (const { platform, account, amount } of COST) {
       insertCost.run(
         randomUUID(),
         platform,
+        `acc-${account}`,
         amount,
         date,
         `${Number(date.slice(5, 7))}月月卡续费`,

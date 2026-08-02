@@ -1,4 +1,4 @@
-import { DEFAULT_PLATFORMS, DURATION_PRESETS } from "../constants";
+import { DEFAULT_ACCOUNTS, DEFAULT_PLATFORMS, DURATION_PRESETS } from "../constants";
 import { addDays, computeEndDate, diffDays, isValidDate, today } from "../date";
 import {
   CITIES,
@@ -17,11 +17,14 @@ import {
  */
 
 export type PlatformLite = { id: string; name: string; aliases: string[] };
+export type AccountLite = { id: string; label: string };
 
 export type ParsedOrder = {
   kind: "order";
   customerName: string | null;
   platformId: string | null;
+  /** 用的是哪个会员账号 */
+  accountId: string | null;
   price: number | null;
   startDate: string | null;
   durationDays: number;
@@ -42,6 +45,7 @@ export type ParsedOrder = {
 export type ParsedCost = {
   kind: "cost";
   platformId: string | null;
+  accountId: string | null;
   amount: number | null;
   costDate: string | null;
   periodDays: number;
@@ -246,6 +250,37 @@ function extractPlatform(s: Scanner, platforms: PlatformLite[]): string | null {
   return null;
 }
 
+/**
+ * 会员账号（手机号前缀，如 178 / 1815）。
+ * 必须排在价格识别之前，否则「178」会先被当成价格吃掉。
+ * 长标签优先，保证 1815 不会被 181 抢先匹配。
+ */
+function extractAccount(s: Scanner, accounts: AccountLite[]): string | null {
+  const sorted = [...accounts].sort((a, b) => b.label.length - a.label.length);
+
+  // 先认显式写法：@178、账号178、178账号
+  for (const acc of sorted) {
+    const explicit = s.take(
+      new RegExp(`(?:@|账号\\s*:?\\s*)${escapeRe(acc.label)}|${escapeRe(acc.label)}\\s*账号`),
+    );
+    if (explicit) return acc.id;
+  }
+
+  // 再认裸数字，但要求前后都不与数字相连，避免从 1815 里抠出 181
+  for (const acc of sorted) {
+    const m = s.find(new RegExp(escapeRe(acc.label)));
+    if (!m) continue;
+    const before = s.text[m.index - 1];
+    const after = s.text[m.index + m[0].length];
+    if (before !== undefined && /[\d.]/.test(before)) continue;
+    if (after !== undefined && /[\d.]/.test(after)) continue;
+    s.consume(m.index, m.index + m[0].length);
+    return acc.id;
+  }
+
+  return null;
+}
+
 /** 仅有月份，如「8月」——用于成本记录（该月花费多少） */
 function extractMonthOnly(s: Scanner): string | null {
   const m = s.take(/(\d{1,2})\s*月(?!\d)/);
@@ -342,17 +377,19 @@ export function parseOrderLine(
     name: p.name,
     aliases: [...p.aliases],
   })),
+  accounts: AccountLite[] = DEFAULT_ACCOUNTS.map((label) => ({ id: `acc-${label}`, label })),
 ): ParsedOrder {
   const raw = input.trim();
   const s = new Scanner(normalize(raw));
 
   // 顺序有讲究：备注先摘走（括号内文字不参与其他识别）；
-  // 日期先于价格，否则「8.02」会被当成价格。
+  // 日期先于账号、账号先于价格，否则「2026.8.02」「178」都会被当成价格。
   const note = extractNote(s);
   const explicitEnd = extractExplicitEnd(s);
   const duration = extractDuration(s);
   const startDate = extractDate(s);
   const platformId = extractPlatform(s, platforms);
+  const accountId = extractAccount(s, accounts);
   const device = extractDevice(s);
   const region = extractRegion(s);
   const customerType = extractCustomerType(s);
@@ -389,6 +426,7 @@ export function parseOrderLine(
     kind: "order",
     customerName,
     platformId,
+    accountId,
     price,
     startDate: start,
     durationDays,
@@ -411,6 +449,7 @@ export function parseCostLine(
     name: p.name,
     aliases: [...p.aliases],
   })),
+  accounts: AccountLite[] = DEFAULT_ACCOUNTS.map((label) => ({ id: `acc-${label}`, label })),
 ): ParsedCost {
   const raw = input.trim();
   const s = new Scanner(normalize(raw));
@@ -422,6 +461,7 @@ export function parseCostLine(
   // 「8月」这种只写月份的写法在成本场景很常见，归到当月 1 号
   const costDate = extractDate(s) ?? extractMonthOnly(s);
   const platformId = extractPlatform(s, platforms);
+  const accountId = extractAccount(s, accounts);
   const amount = extractPrice(s);
 
   const rest = s.leftovers().join(" ");
@@ -433,6 +473,7 @@ export function parseCostLine(
   return {
     kind: "cost",
     platformId,
+    accountId,
     amount,
     costDate: costDate ?? today(),
     periodDays: duration?.days ?? 30,
@@ -442,17 +483,25 @@ export function parseCostLine(
   };
 }
 
-export function parseLine(input: string, platforms?: PlatformLite[]): ParsedLine {
+export function parseLine(
+  input: string,
+  platforms?: PlatformLite[],
+  accounts?: AccountLite[],
+): ParsedLine {
   return looksLikeCost(input)
-    ? parseCostLine(input, platforms)
-    : parseOrderLine(input, platforms);
+    ? parseCostLine(input, platforms, accounts)
+    : parseOrderLine(input, platforms, accounts);
 }
 
 /** 多行批量录入：每行一条 */
-export function parseBatch(input: string, platforms?: PlatformLite[]): ParsedLine[] {
+export function parseBatch(
+  input: string,
+  platforms?: PlatformLite[],
+  accounts?: AccountLite[],
+): ParsedLine[] {
   return input
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((l) => parseLine(l, platforms));
+    .map((l) => parseLine(l, platforms, accounts));
 }

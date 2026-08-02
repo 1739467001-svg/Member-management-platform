@@ -2,7 +2,7 @@ import "server-only";
 import { sqlite } from "../db";
 import { CONVERSION_WINDOW_DAYS } from "../constants";
 import { addDays, diffDays, periodOf, previousPeriod, recentPeriods, today, type Period } from "../date";
-import type { PeriodSummary, PlatformStat } from "./types";
+import type { AccountLoadRow, AccountStat, PeriodSummary, PlatformStat } from "./types";
 import { currentSubscriptions, getExpiringOrders, listOrders } from "./orders";
 import { getTopCustomers } from "./customers";
 
@@ -38,6 +38,127 @@ export function platformStats(start: string, end: string): PlatformStat[] {
       margin: r.revenue > 0 ? profit / r.revenue : 0,
     };
   });
+}
+
+/**
+ * 账号维度收支。收入来自挂在该账号下的订单，成本来自记到该账号的续费。
+ * 没指定账号的记录归到「未指定」一行，避免账不平。
+ */
+export function accountStats(start: string, end: string): AccountStat[] {
+  const rows = sqlite
+    .prepare(
+      `SELECT a.id AS accountId, a.label, a.active,
+              (SELECT COUNT(*) FROM rental_order o
+                 WHERE o.account_id = a.id AND o.start_date BETWEEN ? AND ?) AS orders,
+              (SELECT COALESCE(SUM(o.price), 0) FROM rental_order o
+                 WHERE o.account_id = a.id AND o.start_date BETWEEN ? AND ?) AS revenue,
+              (SELECT COALESCE(SUM(r.amount), 0) FROM cost_record r
+                 WHERE r.account_id = a.id AND r.cost_date BETWEEN ? AND ?) AS cost
+       FROM account a
+       ORDER BY a.sort_order`,
+    )
+    .all(start, end, start, end, start, end) as Array<{
+    accountId: string;
+    label: string;
+    active: number;
+    orders: number;
+    revenue: number;
+    cost: number;
+  }>;
+
+  const unassigned = sqlite
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM rental_order o
+            WHERE o.account_id IS NULL AND o.start_date BETWEEN ? AND ?) AS orders,
+         (SELECT COALESCE(SUM(o.price), 0) FROM rental_order o
+            WHERE o.account_id IS NULL AND o.start_date BETWEEN ? AND ?) AS revenue,
+         (SELECT COALESCE(SUM(r.amount), 0) FROM cost_record r
+            WHERE r.account_id IS NULL AND r.cost_date BETWEEN ? AND ?) AS cost`,
+    )
+    .get(start, end, start, end, start, end) as {
+    orders: number;
+    revenue: number;
+    cost: number;
+  };
+
+  const shape = (
+    accountId: string,
+    label: string,
+    active: boolean,
+    orders: number,
+    revenue: number,
+    cost: number,
+  ): AccountStat => ({
+    accountId,
+    label,
+    active,
+    orders,
+    revenue,
+    cost,
+    profit: revenue - cost,
+    margin: revenue > 0 ? (revenue - cost) / revenue : 0,
+  });
+
+  const out = rows.map((r) =>
+    shape(r.accountId, r.label, r.active === 1, r.orders, r.revenue, r.cost),
+  );
+
+  if (unassigned.orders > 0 || unassigned.cost > 0) {
+    out.push(shape("", "未指定账号", true, unassigned.orders, unassigned.revenue, unassigned.cost));
+  }
+  return out;
+}
+
+/**
+ * 每个账号当前带着几位租户 —— 回答「这个号还能不能再租」和
+ * 「这位客户用的是哪个号」。只算还没过期的订单。
+ */
+export function accountLoad(): AccountLoadRow[] {
+  const rows = sqlite
+    .prepare(
+      `SELECT a.id AS accountId, a.label, a.active,
+              p.id AS platformId, p.name AS platformName, p.color_slot AS colorSlot,
+              COUNT(o.id) AS renters
+       FROM account a
+       LEFT JOIN rental_order o ON o.account_id = a.id AND o.end_date >= ?
+       LEFT JOIN platform p ON p.id = o.platform_id
+       GROUP BY a.id, p.id
+       ORDER BY a.sort_order, p.sort_order`,
+    )
+    .all(today()) as Array<{
+    accountId: string;
+    label: string;
+    active: number;
+    platformId: string | null;
+    platformName: string | null;
+    colorSlot: number | null;
+    renters: number;
+  }>;
+
+  const byAccount = new Map<string, AccountLoadRow>();
+  for (const r of rows) {
+    if (!byAccount.has(r.accountId)) {
+      byAccount.set(r.accountId, {
+        accountId: r.accountId,
+        label: r.label,
+        active: r.active === 1,
+        byPlatform: [],
+        totalRenters: 0,
+      });
+    }
+    const entry = byAccount.get(r.accountId)!;
+    if (r.platformId && r.renters > 0) {
+      entry.byPlatform.push({
+        platformId: r.platformId,
+        platformName: r.platformName!,
+        colorSlot: r.colorSlot!,
+        renters: r.renters,
+      });
+      entry.totalRenters += r.renters;
+    }
+  }
+  return [...byAccount.values()];
 }
 
 function countIn(sql: string, ...params: unknown[]): number {

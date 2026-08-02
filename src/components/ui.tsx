@@ -130,10 +130,25 @@ export function PlatformLabel({ name, slot }: { name: string; slot: number }) {
 
 /* ── 表格 ───────────────────────────────────────────── */
 
-export function Table({ children }: { children: ReactNode }) {
+/**
+ * 表格容器。窄屏放不下时横向滚动，且只有表格自己滚，页面不会横向溢出。
+ * minWidth 传 0 表示不设最小宽度（配合响应式隐藏列时用）。
+ */
+export function Table({
+  children,
+  minWidth = 640,
+}: {
+  children: ReactNode;
+  minWidth?: number;
+}) {
   return (
-    <div className="-mx-5 overflow-x-auto px-5">
-      <table className="w-full min-w-[640px] border-collapse text-sm">{children}</table>
+    <div className="-mx-4 overflow-x-auto px-4 md:-mx-5 md:px-5">
+      <table
+        className="w-full border-collapse text-sm"
+        style={minWidth ? { minWidth } : undefined}
+      >
+        {children}
+      </table>
     </div>
   );
 }
@@ -141,13 +156,16 @@ export function Table({ children }: { children: ReactNode }) {
 export function Th({
   children,
   align = "left",
+  className = "",
 }: {
   children: ReactNode;
   align?: "left" | "right" | "center";
+  /** 用 hidden md:table-cell 之类的类名在窄屏隐藏次要列 */
+  className?: string;
 }) {
   return (
     <th
-      className={`border-b border-line px-3 py-2 text-xs font-medium text-ink-3 text-${align}`}
+      className={`border-b border-line px-2 py-2 text-xs font-medium text-ink-3 md:px-3 ${className}`}
       style={{ textAlign: align }}
     >
       {children}
@@ -166,7 +184,7 @@ export function Td({
 }) {
   return (
     <td
-      className={`border-b border-line/60 px-3 py-2.5 ${className}`}
+      className={`border-b border-line/60 px-2 py-2.5 md:px-3 ${className}`}
       style={{ textAlign: align }}
     >
       {children}

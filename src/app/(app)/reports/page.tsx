@@ -3,6 +3,7 @@ import { Card, CardHeader, EmptyState, PageHeader, PlatformLabel, StatTile, Tabl
 import { ProfitBars, StackedBars, TrendLine } from "@/components/charts";
 import { ReportExport } from "@/components/ReportExport";
 import {
+  accountStats,
   conversionStats,
   dailyRevenue,
   lapsedOrders,
@@ -36,6 +37,7 @@ export default async function ReportsPage({
 
   const summary = summaryFor(granularity);
   const previous = previousSummary(granularity);
+  const accStats = accountStats(summary.start, summary.end);
   const periodCount = granularity === "week" ? 8 : granularity === "month" ? 6 : 3;
   const stacked = platformTrend(granularity, periodCount);
   const conversion = conversionStats();
@@ -89,7 +91,7 @@ export default async function ReportsPage({
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile
           label="收入"
           value={yuanCompact(summary.revenue)}
@@ -134,15 +136,19 @@ export default async function ReportsPage({
         {!hasData ? (
           <EmptyState title="本期还没有数据" hint="录入订单与成本后，这里会给出每个平台的盈亏" />
         ) : (
-          <Table>
+          <Table minWidth={0}>
             <thead>
               <tr>
                 <Th>平台</Th>
-                <Th align="right">订单数</Th>
+                <Th align="right" className="hidden sm:table-cell">
+                  订单数
+                </Th>
                 <Th align="right">收入</Th>
                 <Th align="right">成本</Th>
                 <Th align="right">毛利</Th>
-                <Th align="right">毛利率</Th>
+                <Th align="right" className="hidden sm:table-cell">
+                  毛利率
+                </Th>
               </tr>
             </thead>
             <tbody>
@@ -151,7 +157,7 @@ export default async function ReportsPage({
                   <Td>
                     <PlatformLabel name={p.platformName} slot={p.colorSlot} />
                   </Td>
-                  <Td align="right" className="tnum text-ink-2">
+                  <Td align="right" className="hidden tnum text-ink-2 sm:table-cell">
                     {p.orders}
                   </Td>
                   <Td align="right" className="tnum">
@@ -166,14 +172,14 @@ export default async function ReportsPage({
                   >
                     {yuan(p.profit)}
                   </Td>
-                  <Td align="right" className="tnum text-ink-2">
+                  <Td align="right" className="hidden tnum text-ink-2 sm:table-cell">
                     {p.revenue > 0 ? pct(p.margin) : "—"}
                   </Td>
                 </tr>
               ))}
               <tr className="font-semibold">
                 <Td>合计</Td>
-                <Td align="right" className="tnum">
+                <Td align="right" className="hidden tnum sm:table-cell">
                   {summary.orders}
                 </Td>
                 <Td align="right" className="tnum">
@@ -188,7 +194,7 @@ export default async function ReportsPage({
                 >
                   {yuan(summary.profit)}
                 </Td>
-                <Td align="right" className="tnum">
+                <Td align="right" className="hidden tnum sm:table-cell">
                   {pct(summary.margin)}
                 </Td>
               </tr>
@@ -197,7 +203,61 @@ export default async function ReportsPage({
         )}
       </Card>
 
-      <div className="mb-5 grid gap-5 lg:grid-cols-2">
+      {/* 账号维度：一份账号成本摊给多位租户，这一层最能看出哪个号在赚钱 */}
+      {accStats.some((a) => a.orders > 0 || a.cost > 0) && (
+        <Card className="mb-5">
+          <CardHeader
+            title="账号明细"
+            subtitle="按会员账号核算。一个账号带的租户越多，这份成本就摊得越薄"
+          />
+          <Table minWidth={0}>
+            <thead>
+              <tr>
+                <Th>账号</Th>
+                <Th align="right">订单数</Th>
+                <Th align="right">收入</Th>
+                <Th align="right">成本</Th>
+                <Th align="right">毛利</Th>
+                <Th align="right">毛利率</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {accStats.map((a) => (
+                <tr key={a.accountId || "none"}>
+                  <Td>
+                    <span className="font-mono text-sm tnum">{a.label}</span>
+                    {!a.active && (
+                      <span className="ml-1.5 rounded bg-sunken px-1.5 text-[10px] text-ink-3">
+                        停用
+                      </span>
+                    )}
+                  </Td>
+                  <Td align="right" className="tnum text-ink-2">
+                    {a.orders}
+                  </Td>
+                  <Td align="right" className="tnum">
+                    {yuan(a.revenue)}
+                  </Td>
+                  <Td align="right" className="tnum text-ink-2">
+                    {yuan(a.cost)}
+                  </Td>
+                  <Td
+                    align="right"
+                    className={`tnum font-medium ${a.profit < 0 ? "text-critical" : "text-ink"}`}
+                  >
+                    {yuan(a.profit)}
+                  </Td>
+                  <Td align="right" className="tnum text-ink-2">
+                    {a.revenue > 0 ? pct(a.margin) : "—"}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      )}
+
+      <div className="mb-5 grid gap-5 [&>*]:min-w-0 lg:grid-cols-2">
         <Card>
           <CardHeader title="各平台收入构成" subtitle={`最近 ${periodCount} 个${TABS.find((t) => t.key === granularity)?.label.replace("报", "")}`} />
           {hasData ? (
@@ -222,7 +282,7 @@ export default async function ReportsPage({
         {hasData ? <TrendLine data={daily} /> : <EmptyState title="暂无数据" />}
       </Card>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 [&>*]:min-w-0 lg:grid-cols-3">
         <Card>
           <CardHeader title="经营洞察" />
           <ul className="space-y-3 text-xs">

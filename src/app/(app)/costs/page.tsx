@@ -1,6 +1,6 @@
 import { Card, CardHeader, EmptyState, PageHeader, PlatformLabel, StatTile, Table, Td, Th } from "@/components/ui";
 import { costMatrix, listCosts } from "@/lib/domain/costs";
-import { listPlatforms } from "@/lib/domain/settings";
+import { listAccounts, listPlatforms } from "@/lib/domain/settings";
 import { summaryFor } from "@/lib/domain/reports";
 import { createCostAction, deleteCostAction } from "@/app/actions";
 import { formatDate, today } from "@/lib/date";
@@ -17,6 +17,7 @@ export default async function CostsPage({
   const year = Number(params.year) || Number(today().slice(0, 4));
 
   const platforms = listPlatforms();
+  const accounts = listAccounts();
   const matrix = costMatrix(year);
   const recent = listCosts({ limit: 30 });
   const month = summaryFor("month");
@@ -28,7 +29,7 @@ export default async function CostsPage({
         subtitle="会员采购与续费支出，按平台归集后冲抵收入"
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label={`${year} 年累计成本`} value={yuanCompact(matrix.grandTotal)} />
         <StatTile label={`${month.label}成本`} value={yuanCompact(month.cost)} />
         <StatTile label={`${month.label}收入`} value={yuanCompact(month.revenue)} />
@@ -39,7 +40,7 @@ export default async function CostsPage({
         />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.7fr]">
+      <div className="grid gap-5 [&>*]:min-w-0 lg:grid-cols-[1fr_1.7fr]">
         <Card>
           <CardHeader title="记一笔成本" subtitle="也可以在看板用文字录入：成本 爱奇艺 8.1 30 月卡续费" />
           <form action={createCostAction} className="space-y-3">
@@ -53,6 +54,24 @@ export default async function CostsPage({
                 {platforms.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-ink-3">
+                会员账号 <span className="text-ink-3">（这笔钱给哪个号续的）</span>
+              </span>
+              <select
+                name="accountId"
+                defaultValue=""
+                className="w-full rounded-lg border border-line bg-page px-2.5 py-2 text-xs outline-none focus:border-primary"
+              >
+                <option value="">未指定</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
                   </option>
                 ))}
               </select>
@@ -181,15 +200,16 @@ export default async function CostsPage({
         {recent.length === 0 ? (
           <EmptyState icon="▼" title="暂无成本记录" />
         ) : (
-          <Table>
+          <Table minWidth={0}>
             <thead>
               <tr>
                 <Th>日期</Th>
                 <Th>平台</Th>
+                <Th>账号</Th>
                 <Th align="right">金额</Th>
-                <Th>覆盖周期</Th>
-                <Th>分类</Th>
-                <Th>备注</Th>
+                <Th className="hidden lg:table-cell">覆盖周期</Th>
+                <Th className="hidden lg:table-cell">分类</Th>
+                <Th className="hidden md:table-cell">备注</Th>
                 <Th align="right">操作</Th>
               </tr>
             </thead>
@@ -200,14 +220,17 @@ export default async function CostsPage({
                   <Td>
                     <PlatformLabel name={c.platformName} slot={c.colorSlot} />
                   </Td>
+                  <Td className="font-mono text-xs text-ink-2 tnum">{c.accountLabel ?? "—"}</Td>
                   <Td align="right" className="tnum font-medium">
                     {yuan(c.amount)}
                   </Td>
-                  <Td className="tnum text-xs text-ink-3">{c.periodDays} 天</Td>
-                  <Td className="text-xs text-ink-2">
+                  <Td className="hidden tnum text-xs text-ink-3 lg:table-cell">
+                    {c.periodDays} 天
+                  </Td>
+                  <Td className="hidden text-xs text-ink-2 lg:table-cell">
                     {c.category === "membership" ? "会员采购" : "其他支出"}
                   </Td>
-                  <Td className="text-xs text-ink-3">{c.note || "—"}</Td>
+                  <Td className="hidden text-xs text-ink-3 md:table-cell">{c.note || "—"}</Td>
                   <Td align="right">
                     <form action={deleteCostAction}>
                       <input type="hidden" name="id" value={c.id} />

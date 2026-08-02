@@ -15,7 +15,8 @@ SQLite（better-sqlite3）· Drizzle ORM。无 Redis、无外部数据库、无�
 
 | 能力 | 说明 |
 |---|---|
-| **一行文字录入** | `小陈 爱奇艺 2026.8.02 13 老顾客（备注）iphone17 浙江杭州` → 自动拆成 8 个字段，生成可编辑的确认卡片再入库 |
+| **一行文字录入** | `小陈 爱奇艺 178 2026.8.02 13 老顾客（备注）iphone17 浙江杭州` → 自动拆成 9 个字段，生成可编辑的确认卡片再入库 |
+| **账号归属** | 会员账号按手机号前三位命名（前三位撞车时补第四位，如 181/1815）。订单与成本都可挂到具体账号，看板显示每个账号当前带几位租户 |
 | **30 天周期管理** | 月卡 30 天、季卡 90 天，支持自定义有效天数或直接指定到期日 |
 | **到期提醒** | 剩余 ≤1 天红色提醒、≤3 天橙色预警，每行可一键续费；已续过费的旧订单不会重复出现 |
 | **优质客户识别** | 消费金额、续费次数、在租时长、按时率、跨平台 五维加权评分，自动分层与打标 |
@@ -126,7 +127,14 @@ hh.example.com {
 }
 ```
 
-Nginx 亦可，记得 `proxy_set_header Host $host;`。
+Caddy 会自动申请证书并透传 `X-Forwarded-Proto`，无需额外配置。
+用 Nginx 的话见下面「部署前必看的几个坑」第 1 条。
+
+### 手机 / 平板
+
+页面已适配手机、平板与桌面三档：手机走底部导航 + 卡片式列表，
+平板起显示侧边栏。用手机浏览器打开后选「添加到主屏幕」，
+可以像 App 一样全屏打开（图标与启动配置已内置）。
 
 ---
 
@@ -139,7 +147,59 @@ Nginx 亦可，记得 `proxy_set_header Host $host;`。
 | `DATABASE_PATH` | | SQLite 文件路径，默认 `./data/app.db`。**standalone 部署请用绝对路径** |
 | `BACKUP_PATH` | | 备份目录，默认 `./backup`，保留最近 30 份 |
 | `CRON_TOKEN` | | 每日任务 HTTP 端点的调用令牌；不设则该端点不鉴权 |
+| `COOKIE_SECURE` | | 强制会话 Cookie 的 Secure 标记（`true`/`false`）。默认按请求协议自动判断，一般不用设 |
 | `TZ` | | 业务时区，默认 `Asia/Shanghai` |
+
+---
+
+## 部署前必看的几个坑
+
+这几条都是实际踩过并验证过的，不是理论风险：
+
+**1. 用 IP + HTTP 直接访问时能不能登录**
+
+会话 Cookie 的 `Secure` 标记按请求的实际协议自动判断：
+走 HTTPS（或反代传了 `x-forwarded-proto: https`）才加，纯 HTTP 不加。
+所以 `http://服务器IP:3000` 可以正常登录。
+如果加了 `Secure` 又走 HTTP，浏览器会**静默丢弃** Cookie —— 表现是「密码明明是对的，
+一登录就弹回登录页」。注意 `localhost` 是浏览器的例外，本地永远测不出这个问题。
+
+配好 HTTPS 后，Nginx/Caddy 请务必透传协议头：
+
+```nginx
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header Host $host;
+```
+
+**2. 裸机部署时 `DATABASE_PATH` 必须写绝对路径**
+
+standalone 的 `server.js` 启动时会把工作目录切到它自己所在的文件夹。
+写相对路径的话，数据库会跑到 `.next/standalone/data/` 里去，
+下次重新构建就「数据不见了」。
+
+**3. 跨架构复制产物会挂**
+
+`better-sqlite3` 带的是预编译二进制。x64 机器上构建的 `.next/standalone`
+直接拷到 ARM 服务器（倚天 / Graviton 等）会因为找不到匹配的 `.node` 而启动失败。
+**在目标服务器上构建**，或者用 Docker（镜像在目标架构上构建）就没这问题。
+
+**4. 备份别只留在同一块盘上**
+
+系统每天自动备份到 `BACKUP_PATH`，但那和数据库在同一个卷里 —— 卷没了就一起没了。
+建议加一条 crontab 往外拷：
+
+```cron
+30 3 * * * cp /var/lib/docker/volumes/hhstudio-data/_data/app.db /mnt/backup/hh-$(date +\%F).db
+```
+
+**5. 容器里灌演示数据**
+
+`npm run seed:demo` 在容器内不可用（standalone 产物里的 `package.json` 没有 scripts）。
+直接调脚本：
+
+```bash
+docker compose exec app node scripts/seed-demo.mjs
+```
 
 ---
 

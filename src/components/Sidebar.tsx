@@ -20,8 +20,8 @@ export function Sidebar({ expiringCount }: { expiringCount: number }) {
 
   return (
     <>
-      {/* 桌面：左侧固定栏 */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-line bg-card md:flex">
+      {/* 平板起：左侧固定栏。平板收窄到 w-48，把宽度让给内容 */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-48 flex-col border-r border-line bg-card md:flex lg:w-56">
         <div className="flex h-16 items-center gap-2.5 px-5">
           <span
             aria-hidden
@@ -43,7 +43,7 @@ export function Sidebar({ expiringCount }: { expiringCount: number }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
                   active
                     ? "tint-primary font-medium text-primary"
                     : "text-ink-2 hover:bg-sunken hover:text-ink"
@@ -73,7 +73,7 @@ export function Sidebar({ expiringCount }: { expiringCount: number }) {
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] ${
+              className={`relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 text-[10px] ${
                 active ? "text-primary" : "text-ink-3"
               }`}
             >

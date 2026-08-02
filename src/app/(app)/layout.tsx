@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-dvh">
       <Sidebar expiringCount={expiring.length} />
 
-      <div className="md:pl-56">
+      <div className="md:pl-48 lg:pl-56">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-line bg-page/85 px-4 backdrop-blur-md md:px-8">
           <div className="flex items-center gap-2 md:hidden">
             <span
@@ -45,7 +45,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-8 md:pb-12">{children}</main>
+        {/* 手机端底部导航会盖住内容，留出安全距离 */}
+        <main className="mx-auto max-w-6xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-5 md:px-6 md:pb-12 md:pt-6 lg:px-8">
+          {children}
+        </main>
       </div>
     </div>
   );

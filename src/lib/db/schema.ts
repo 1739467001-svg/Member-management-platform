@@ -18,6 +18,22 @@ export const platforms = sqliteTable("platform", {
   active: integer("active").notNull().default(1),
 });
 
+/**
+ * 会员账号。命名取注册手机号的前三位，前三位撞车时补到第四位（如 181 / 1815）。
+ * 一个账号可以在多个平台开会员，也可以同时租给多位客户 —— 所以「账号 × 平台」
+ * 才是一份成本对应多份收入的那个点。
+ */
+export const accounts = sqliteTable("account", {
+  id: text("id").primaryKey(),
+  /** 显示名，如 178 */
+  label: text("label").notNull(),
+  note: text("note").notNull().default(""),
+  /** 停用后不再出现在录入下拉里，但历史订单照常保留（如将来裁撤的 1815） */
+  active: integer("active").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});
+
 /** 客户（租户）。派生字段由每日任务与写入后重算刷新 */
 export const customers = sqliteTable(
   "customer",
@@ -70,7 +86,7 @@ export const rentalOrders = sqliteTable(
     suggestedPrice: real("suggested_price"),
     /** 续费自哪张订单 */
     renewedFromId: text("renewed_from_id"),
-    /** P1 预留：绑定的平台账号 */
+    /** 该客户用的是哪个会员账号 */
     accountId: text("account_id"),
     /** 原始录入文字，可回溯解析错误 */
     rawText: text("raw_text").notNull().default(""),
@@ -91,6 +107,8 @@ export const costRecords = sqliteTable(
   {
     id: text("id").primaryKey(),
     platformId: text("platform_id").notNull(),
+    /** 这笔钱是给哪个账号续的；留空表示按平台整体记账 */
+    accountId: text("account_id"),
     amount: real("amount").notNull(),
     costDate: text("cost_date").notNull(),
     /** 覆盖周期天数（月卡 30 / 季卡 90），供二期摊销使用 */
@@ -134,6 +152,7 @@ export const appSettings = sqliteTable("app_setting", {
 });
 
 export type Platform = typeof platforms.$inferSelect;
+export type Account = typeof accounts.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type RentalOrder = typeof rentalOrders.$inferSelect;
 export type CostRecord = typeof costRecords.$inferSelect;
