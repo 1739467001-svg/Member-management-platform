@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    container_name: hhstudio-membership
+    restart: unless-stopped
+    ports:
+      # 只绑到本机，前面用 Nginx/Caddy 反代并配 HTTPS
+      - "127.0.0.1:3000:3000"
+    environment:
+      # 必改：openssl rand -hex 32
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET}
+      # 首次启动的登录密码，之后可在设置页修改
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:-hhstudio2026}
+      # 供服务器 crontab 兜底调用每日任务
+      CRON_TOKEN: ${CRON_TOKEN:-change-me}
+      TZ: ${TZ:-Asia/Shanghai}
+      DATABASE_PATH: /data/app.db
+      BACKUP_PATH: /data/backup
+    volumes:
+      - hhstudio-data:/data
+
+volumes:
+  hhstudio-data:

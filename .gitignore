@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# 数据库与备份（生产数据不入库）
+data/
+backup/
+
+.env
+.env.local
+.env*.local
+
+*.log
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+.vscode/
+.idea/

@@ -1,0 +1,214 @@
+@import "tailwindcss";
+
+/* 主题切换由根元素 class="dark" 控制（跟随系统 + 手动切换） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ──────────────────────────────────────────────
+   设计令牌 · 黄棕 / 淡棕色系
+   浅色：奶油底 + 深棕字；深色：暖褐底 + 米色字
+   ────────────────────────────────────────────── */
+:root {
+  --page: #faf5ec;
+  --card: #fdfaf4;
+  --card-sunken: #f5ecdd;
+  --border: #e7d8c1;
+  --border-strong: #d8c3a4;
+
+  --ink: #2e2318;
+  --ink-2: #75634f;
+  --ink-3: #a2907b;
+
+  --primary: #8b5e34;
+  --primary-hover: #6f4a28;
+  --primary-ink: #fdfaf4;
+  --secondary: #c89361;
+  --accent: #e0a03c;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  /* 图表分类色（平台身份）· 固定槽位，经色觉障碍校验 */
+  --series-1: #2a78d6; /* 爱奇艺 */
+  --series-2: #eb6834; /* 腾讯视频 */
+  --series-3: #1baf7a; /* 哔哩哔哩 */
+  --series-4: #eda100; /* 芒果TV */
+  --series-5: #e87ba4; /* 优酷 */
+
+  --grid: #e7d8c1;
+  --axis: #d8c3a4;
+
+  --shadow-card: 0 1px 2px rgba(46, 35, 24, 0.05), 0 1px 3px rgba(46, 35, 24, 0.04);
+  --shadow-pop: 0 4px 12px rgba(46, 35, 24, 0.1), 0 2px 4px rgba(46, 35, 24, 0.06);
+}
+
+.dark {
+  --page: #141210;
+  --card: #1a1613;
+  --card-sunken: #221c17;
+  --border: #332b23;
+  --border-strong: #453a2f;
+
+  --ink: #f5efe6;
+  --ink-2: #b8a894;
+  --ink-3: #8a7a68;
+
+  --primary: #c89361;
+  --primary-hover: #d9a877;
+  --primary-ink: #1a1613;
+  --secondary: #8b5e34;
+  --accent: #e0a03c;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+
+  --grid: #2b241d;
+  --axis: #453a2f;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-sunken: var(--card-sunken);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
+
+  --font-sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Segoe UI", sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 数字列纵向对齐 */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+    border: 2px solid var(--page);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-3);
+  }
+}
+
+@layer utilities {
+  /* 柔和底色：用主色/状态色按比例混入卡片底，保持棕调统一 */
+  .tint-primary {
+    background: color-mix(in oklab, var(--primary) 12%, var(--card));
+  }
+  .tint-good {
+    background: color-mix(in oklab, var(--good) 12%, var(--card));
+  }
+  .tint-warning {
+    background: color-mix(in oklab, var(--warning) 18%, var(--card));
+  }
+  .tint-serious {
+    background: color-mix(in oklab, var(--serious) 16%, var(--card));
+  }
+  .tint-critical {
+    background: color-mix(in oklab, var(--critical) 12%, var(--card));
+  }
+
+  .card-surface {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+/* 进入动画：轻量，不喧宾夺主 */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
