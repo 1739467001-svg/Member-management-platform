@@ -152,6 +152,24 @@ Caddy 会自动申请证书并透传 `X-Forwarded-Proto`，无需额外配置。
 
 ---
 
+## 这个架构适合部署在哪里
+
+| 环境 | 是否可用 | 说明 |
+|---|---|---|
+| **云服务器**（阿里云 ECS / 腾讯云轻量 / 华为云 / 自建 VPS） | ✅ 推荐 | 有持久磁盘，SQLite 单文件跑得又快又省心。512MB 内存足够 |
+| **Docker**（跑在上述服务器上） | ✅ 推荐 | 数据落具名卷；entrypoint 会自动纠正挂载目录属主 |
+| **Vercel / Netlify / 各家函数计算** | ❌ 不可用 | 文件系统只读、实例随时销毁重建，本机 SQLite 存不下数据。**症状正是「登录页能打开，一提交密码就报服务器错误」** |
+| **Cloudflare Workers / Pages** | ❌ 不可用 | 同上，且不支持 Node 原生模块 |
+
+如果一定要用无服务器平台，数据层得换成网络数据库（Neon / Supabase 的
+Postgres，或 Turso 这类托管 SQLite）。这是一次实打实的改造，不是改个配置能解决的 ——
+需要的话告诉我，我来改。
+
+**判断自己属于哪种情况**：部署后访问 `/api/health`（不需要登录），
+它会直接告诉你数据库路径、目录是否可写、原生模块能否加载、以及运行架构。
+
+---
+
 ## 部署前必看的几个坑
 
 这几条都是实际踩过并验证过的，不是理论风险：
@@ -170,6 +188,31 @@ Caddy 会自动申请证书并透传 `X-Forwarded-Proto`，无需额外配置。
 proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header Host $host;
 ```
+
+**1.5 登录报「服务器错误」怎么查**
+
+先访问 `/api/health`（无需登录）。它会返回类似：
+
+```json
+{
+  "ok": false,
+  "checks": {
+    "dbPath": "/data/app.db",
+    "dataDirWritable": false,
+    "dataDirError": "EACCES",
+    "nativeModuleLoaded": true,
+    "arch": "x64"
+  }
+}
+```
+
+- `dataDirError: EACCES` → 目录没写权限。Docker 用 bind mount 时执行
+  `chown -R 1001:1001 <宿主目录>`（用本仓库的 compose 则已自动处理）
+- `dataDirError: EROFS` → 文件系统只读，说明部署在了无服务器平台，见上一节
+- `nativeModuleLoaded: false` → 原生模块架构不匹配，在目标机重新构建
+- `dbPathIsAbsolute: false` → 见下一条
+
+登录页现在也会把具体原因直接显示在密码框下方，不再是空白的 500 页。
 
 **2. 裸机部署时 `DATABASE_PATH` 必须写绝对路径**
 
