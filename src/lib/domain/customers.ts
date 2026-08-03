@@ -1,5 +1,5 @@
 import "server-only";
-import { sqlite } from "../db";
+import { getSql, ready } from "../db";
 import {
   CHURNED_DAYS,
   CHURN_RISK_DAYS,
@@ -131,14 +131,15 @@ function computeTags(m: Metrics, tier: CustomerTier, isBigSpender: boolean): str
  * 重算全部客户的派生指标。
  * 订单发生任何变化后调用；每日任务也会跑一次（因为「距今天数」会随日期漂移）。
  */
-export function recomputeCustomers(): void {
-  const rows = sqlite
-    .prepare(
-      `SELECT customer_id AS customerId, platform_id AS platformId, price,
-              start_date AS startDate, end_date AS endDate, duration_days AS durationDays
-       FROM rental_order`,
-    )
-    .all() as OrderRow[];
+export async function recomputeCustomers(): Promise<void> {
+  await ready();
+  const pg = getSql();
+
+  const rows = await pg<OrderRow[]>`
+    SELECT customer_id AS "customerId", platform_id AS "platformId", price,
+           start_date AS "startDate", end_date AS "endDate",
+           duration_days AS "durationDays"
+    FROM rental_order`;
 
   const grouped = new Map<string, OrderRow[]>();
   for (const r of rows) {
@@ -147,12 +148,10 @@ export function recomputeCustomers(): void {
     grouped.set(r.customerId, list);
   }
 
-  const allCustomerIds = (
-    sqlite.prepare(`SELECT id FROM customer`).all() as { id: string }[]
-  ).map((r) => r.id);
+  const ids = await pg<{ id: string }[]>`SELECT id FROM customer`;
 
   const metricsById = new Map<string, Metrics>();
-  for (const id of allCustomerIds) {
+  for (const { id } of ids) {
     metricsById.set(id, computeMetrics(grouped.get(id) ?? []));
   }
 
@@ -167,110 +166,90 @@ export function recomputeCustomers(): void {
   };
   const bigSpenderThreshold = revenues[Math.floor(revenues.length * 0.8)] ?? Infinity;
 
-  const update = sqlite.prepare(
-    `UPDATE customer SET
-       total_orders = ?, total_revenue = ?, renewal_count = ?, platform_count = ?,
-       first_order_at = ?, last_order_at = ?, score = ?, tier = ?, tags = ?, updated_at = ?
-     WHERE id = ?`,
-  );
-
   const now = Date.now();
-  sqlite.transaction(() => {
-    for (const [id, m] of metricsById) {
-      const score = computeScore(m, percentileOf(m.totalRevenue));
-      const tier = computeTier(score, m);
-      const tags = computeTags(
-        m,
-        tier,
-        m.totalRevenue > 0 && m.totalRevenue >= bigSpenderThreshold,
-      );
-      update.run(
-        m.totalOrders,
-        Number(m.totalRevenue.toFixed(2)),
-        m.renewalCount,
-        m.platformCount,
-        m.firstOrderAt,
-        m.lastOrderAt,
-        score,
-        tier,
-        tags.join(","),
-        now,
-        id,
-      );
-    }
-  })();
+  for (const [id, m] of metricsById) {
+    const score = computeScore(m, percentileOf(m.totalRevenue));
+    const tier = computeTier(score, m);
+    const tags = computeTags(
+      m,
+      tier,
+      m.totalRevenue > 0 && m.totalRevenue >= bigSpenderThreshold,
+    );
+
+    await pg`
+      UPDATE customer SET
+        total_orders = ${m.totalOrders},
+        total_revenue = ${Number(m.totalRevenue.toFixed(2))},
+        renewal_count = ${m.renewalCount},
+        platform_count = ${m.platformCount},
+        first_order_at = ${m.firstOrderAt},
+        last_order_at = ${m.lastOrderAt},
+        score = ${score},
+        tier = ${tier},
+        tags = ${tags.join(",")},
+        updated_at = ${now}
+      WHERE id = ${id}`;
+  }
 }
 
 /* ── 读取 ───────────────────────────────────────────── */
 
-type CustomerRow = Omit<CustomerView, "tags" | "activeOrders"> & {
-  tags: string;
-  activeOrders: number;
-};
-
-/** 「今天」由应用按业务时区给出，不用 SQLite 的 date('now')，避免服务器时区不一致 */
-const customerSelect = () => `
-  SELECT c.id, c.name, c.note, c.region, c.device,
-         c.first_order_at AS firstOrderAt, c.last_order_at AS lastOrderAt,
-         c.total_orders AS totalOrders, c.total_revenue AS totalRevenue,
-         c.renewal_count AS renewalCount, c.platform_count AS platformCount,
-         c.score, c.tier, c.tags,
-         (SELECT COUNT(*) FROM rental_order o
-           WHERE o.customer_id = c.id AND o.end_date >= '${today()}') AS activeOrders
-  FROM customer c
-`;
+type CustomerRow = Omit<CustomerView, "tags"> & { tags: string };
 
 function toView(row: CustomerRow): CustomerView {
   return {
     ...row,
+    activeOrders: Number(row.activeOrders),
     tags: row.tags ? row.tags.split(",").filter(Boolean) : [],
   };
 }
 
-export function listCustomers(
+export async function listCustomers(
   opts: { tier?: CustomerTier; search?: string; tag?: string } = {},
-): CustomerView[] {
-  const where: string[] = [];
-  const params: unknown[] = [];
+): Promise<CustomerView[]> {
+  await ready();
+  const like = opts.search ? `%${opts.search}%` : null;
+  const tagLike = opts.tag ? `%${opts.tag}%` : null;
 
-  if (opts.tier) {
-    where.push("c.tier = ?");
-    params.push(opts.tier);
-  }
-  if (opts.search) {
-    where.push("(c.name LIKE ? OR c.note LIKE ? OR c.region LIKE ?)");
-    const like = `%${opts.search}%`;
-    params.push(like, like, like);
-  }
-  if (opts.tag) {
-    where.push("c.tags LIKE ?");
-    params.push(`%${opts.tag}%`);
-  }
+  const rows = await getSql()<CustomerRow[]>`
+    SELECT c.id, c.name, c.note, c.region, c.device,
+           c.first_order_at AS "firstOrderAt", c.last_order_at AS "lastOrderAt",
+           c.total_orders AS "totalOrders", c.total_revenue AS "totalRevenue",
+           c.renewal_count AS "renewalCount", c.platform_count AS "platformCount",
+           c.score, c.tier, c.tags,
+           (SELECT COUNT(*) FROM rental_order o
+             WHERE o.customer_id = c.id AND o.end_date >= ${today()}) AS "activeOrders"
+    FROM customer c
+    WHERE (${opts.tier ?? null}::text IS NULL OR c.tier = ${opts.tier ?? null})
+      AND (${like}::text IS NULL OR c.name LIKE ${like} OR c.note LIKE ${like} OR c.region LIKE ${like})
+      AND (${tagLike}::text IS NULL OR c.tags LIKE ${tagLike})
+    ORDER BY c.score DESC, c.total_revenue DESC`;
 
-  const sql =
-    customerSelect() +
-    (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
-    " ORDER BY c.score DESC, c.total_revenue DESC";
-
-  return (sqlite.prepare(sql).all(...params) as CustomerRow[]).map(toView);
+  return rows.map(toView);
 }
 
-export function getCustomer(id: string): CustomerView | null {
-  const row = sqlite.prepare(`${customerSelect()} WHERE c.id = ?`).get(id) as
-    | CustomerRow
-    | undefined;
-  return row ? toView(row) : null;
+export async function getCustomer(id: string): Promise<CustomerView | null> {
+  await ready();
+  const rows = await getSql()<CustomerRow[]>`
+    SELECT c.id, c.name, c.note, c.region, c.device,
+           c.first_order_at AS "firstOrderAt", c.last_order_at AS "lastOrderAt",
+           c.total_orders AS "totalOrders", c.total_revenue AS "totalRevenue",
+           c.renewal_count AS "renewalCount", c.platform_count AS "platformCount",
+           c.score, c.tier, c.tags,
+           (SELECT COUNT(*) FROM rental_order o
+             WHERE o.customer_id = c.id AND o.end_date >= ${today()}) AS "activeOrders"
+    FROM customer c WHERE c.id = ${id}`;
+  return rows[0] ? toView(rows[0]) : null;
 }
 
-/** 优质客户：钻石/金牌，按分数排序 */
-export function getTopCustomers(limit = 5): CustomerView[] {
-  return listCustomers()
-    .filter((c) => c.totalOrders > 0)
-    .slice(0, limit);
+/** 优质客户：按分数排序 */
+export async function getTopCustomers(limit = 5): Promise<CustomerView[]> {
+  const all = await listCustomers();
+  return all.filter((c) => c.totalOrders > 0).slice(0, limit);
 }
 
-export function updateCustomerNote(id: string, note: string): void {
-  sqlite
-    .prepare(`UPDATE customer SET note = ?, updated_at = ? WHERE id = ?`)
-    .run(note, Date.now(), id);
+export async function updateCustomerNote(id: string, note: string): Promise<void> {
+  await ready();
+  await getSql()`
+    UPDATE customer SET note = ${note}, updated_at = ${Date.now()} WHERE id = ${id}`;
 }

@@ -14,21 +14,21 @@ import { ORDER_STATUS_META } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const platforms = platformsForParser();
-  const platformMeta = listPlatforms();
+  const platforms = await platformsForParser();
+  const platformMeta = await listPlatforms();
   const withSlots = platforms.map((p) => ({
     ...p,
     colorSlot: platformMeta.find((m) => m.id === p.id)?.colorSlot ?? 1,
   }));
-  const accounts = accountsForParser();
-  const load = accountLoad();
+  const accounts = await accountsForParser();
+  const load = await accountLoad();
 
-  const kpi = dashboardKpis();
-  const month = summaryFor("month");
-  const urgent = getExpiringOrders();
-  const warning = getWarningOrders();
-  const recent = listOrders({ limit: 8 });
-  const trend = dailyRevenue(30);
+  const kpi = await dashboardKpis();
+  const month = await summaryFor("month");
+  const urgent = await getExpiringOrders();
+  const warning = await getWarningOrders();
+  const recent = await listOrders({ limit: 8 });
+  const trend = await dailyRevenue(30);
 
   const hasData = recent.length > 0;
 

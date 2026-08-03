@@ -35,17 +35,17 @@ export default async function ReportsPage({
   const params = await searchParams;
   const granularity = (TABS.find((t) => t.key === params.g)?.key ?? "month") as Granularity;
 
-  const summary = summaryFor(granularity);
-  const previous = previousSummary(granularity);
-  const accStats = accountStats(summary.start, summary.end);
+  const summary = await summaryFor(granularity);
+  const previous = await previousSummary(granularity);
+  const accStats = await accountStats(summary.start, summary.end);
   const periodCount = granularity === "week" ? 8 : granularity === "month" ? 6 : 3;
-  const stacked = platformTrend(granularity, periodCount);
-  const conversion = conversionStats();
-  const lapsed = lapsedOrders(8);
-  const top = getTopCustomers(5);
-  const daily = dailyRevenue(granularity === "week" ? 14 : 30);
+  const stacked = await platformTrend(granularity, periodCount);
+  const conversion = await conversionStats();
+  const lapsed = await lapsedOrders(8);
+  const top = await getTopCustomers(5);
+  const daily = await dailyRevenue(granularity === "week" ? 14 : 30);
 
-  const markdown = reportMarkdown(granularity, summary, previous);
+  const markdown = reportMarkdown(granularity, summary, previous, conversion);
   const csv = reportCsv(summary);
 
   const delta = (now: number, before: number) =>

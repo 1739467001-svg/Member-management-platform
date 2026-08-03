@@ -5,23 +5,23 @@
   "description": "HHStudio Junye 会员管理系统",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/postbuild.mjs",
+    "build": "next build",
+    "build:standalone": "BUILD_STANDALONE=true next build && node scripts/postbuild.mjs",
     "start": "next start",
     "start:standalone": "node .next/standalone/server.js",
     "seed:demo": "node scripts/seed-demo.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.2",
     "drizzle-orm": "^0.45.2",
     "next": "^16.2.12",
+    "postgres": "^3.4.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

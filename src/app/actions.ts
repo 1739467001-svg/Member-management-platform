@@ -64,7 +64,7 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   // 校验密码要读数据库。存储没配好时这里会抛错，
   // 直接把原因显示在登录框下面，比甩一个 500 白屏有用得多。
   try {
-    if (!checkPassword(password)) return { error: "密码不正确" };
+    if (!(await checkPassword(password))) return { error: "密码不正确" };
   } catch (error) {
     if (error instanceof DatabaseInitError) {
       return { error: `${error.message}\n${error.hint}`, diagnostic: true };
@@ -129,12 +129,12 @@ export async function saveEntriesAction(payload: {
       if (!o.customerName?.trim()) return { ok: false, error: "客户名不能为空" };
       if (!o.platformId) return { ok: false, error: "请选择平台" };
       if (!Number.isFinite(o.price)) return { ok: false, error: "价格必须是数字" };
-      createOrder(o as CreateOrderInput);
+      await createOrder(o as CreateOrderInput);
     }
     for (const c of payload.costs) {
       if (!c.platformId) return { ok: false, error: "请选择平台" };
       if (!Number.isFinite(c.amount)) return { ok: false, error: "金额必须是数字" };
-      createCost(c);
+      await createCost(c);
     }
     refreshAll();
     return { ok: true, orders: payload.orders.length, costs: payload.costs.length };
@@ -152,9 +152,9 @@ export async function lookupCustomerAction(name: string, platformId: string) {
   const trimmed = name?.trim();
   if (!trimmed || !platformId) return null;
 
-  const customer = findCustomerByName(trimmed);
-  const resolved = resolveCustomerType(customer?.id ?? null, platformId);
-  const suggestedPrice = getSuggestedPrice(platformId, resolved.type);
+  const customer = await findCustomerByName(trimmed);
+  const resolved = await resolveCustomerType(customer?.id ?? null, platformId);
+  const suggestedPrice = await getSuggestedPrice(platformId, resolved.type);
 
   return {
     exists: Boolean(customer),
@@ -172,7 +172,7 @@ export async function lookupCustomerAction(name: string, platformId: string) {
 export async function updateOrderAction(formData: FormData) {
   const id = String(formData.get("id"));
   const accountId = String(formData.get("accountId") ?? "");
-  updateOrder(id, {
+  await updateOrder(id, {
     price: Number(formData.get("price")),
     startDate: String(formData.get("startDate")),
     durationDays: Number(formData.get("durationDays")),
@@ -185,14 +185,14 @@ export async function updateOrderAction(formData: FormData) {
 }
 
 export async function deleteOrderAction(formData: FormData) {
-  deleteOrder(String(formData.get("id")));
+  await deleteOrder(String(formData.get("id")));
   refreshAll();
 }
 
 export async function renewOrderAction(formData: FormData) {
   const priceRaw = formData.get("price");
   const price = priceRaw ? Number(priceRaw) : undefined;
-  renewOrder(String(formData.get("id")), Number.isFinite(price) ? { price } : {});
+  await renewOrder(String(formData.get("id")), Number.isFinite(price) ? { price } : {});
   refreshAll();
 }
 
@@ -200,7 +200,7 @@ export async function renewOrderAction(formData: FormData) {
 
 export async function createCostAction(formData: FormData) {
   const accountId = String(formData.get("accountId") ?? "");
-  createCost({
+  await createCost({
     platformId: String(formData.get("platformId")),
     accountId: accountId || null,
     amount: Number(formData.get("amount")),
@@ -213,7 +213,7 @@ export async function createCostAction(formData: FormData) {
 }
 
 export async function deleteCostAction(formData: FormData) {
-  deleteCost(String(formData.get("id")));
+  await deleteCost(String(formData.get("id")));
   refreshAll();
 }
 
@@ -221,7 +221,7 @@ export async function deleteCostAction(formData: FormData) {
 
 export async function updateCustomerNoteAction(formData: FormData) {
   const id = String(formData.get("id"));
-  updateCustomerNote(id, String(formData.get("note") ?? ""));
+  await updateCustomerNote(id, String(formData.get("note") ?? ""));
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
 }
@@ -234,7 +234,7 @@ export async function savePricesAction(formData: FormData) {
     if (!match) continue;
     const price = Number(value);
     if (Number.isFinite(price) && price >= 0) {
-      setPrice(match[1], match[2] as "new" | "returning", price);
+      await setPrice(match[1], match[2] as "new" | "returning", price);
     }
   }
   revalidatePath("/settings");
@@ -244,13 +244,13 @@ export async function savePricesAction(formData: FormData) {
 export async function createAccountAction(formData: FormData) {
   const label = String(formData.get("label") ?? "").trim();
   if (!label) return;
-  createAccount(label, String(formData.get("note") ?? ""));
+  await createAccount(label, String(formData.get("note") ?? ""));
   revalidatePath("/settings");
   refreshAll();
 }
 
 export async function saveAccountAction(formData: FormData) {
-  updateAccount(String(formData.get("id")), {
+  await updateAccount(String(formData.get("id")), {
     label: String(formData.get("label") ?? "").trim(),
     note: String(formData.get("note") ?? ""),
     // 停用后不再出现在录入下拉与解析词典里，历史订单保持不变
@@ -261,7 +261,7 @@ export async function saveAccountAction(formData: FormData) {
 }
 
 export async function savePlatformAction(formData: FormData) {
-  updatePlatform(String(formData.get("id")), {
+  await updatePlatform(String(formData.get("id")), {
     name: String(formData.get("name")),
     aliases: String(formData.get("aliases")),
   });
@@ -271,8 +271,8 @@ export async function savePlatformAction(formData: FormData) {
 export async function changePasswordAction(_prev: unknown, formData: FormData) {
   const current = String(formData.get("current") ?? "");
   const next = String(formData.get("next") ?? "");
-  if (next.length < 6) return { error: "新密码至少 6 位" };
-  if (!changePassword(current, next)) return { error: "当前密码不正确" };
+  if (next.length < 4) return { error: "新密码至少 4 位" };
+  if (!(await changePassword(current, next))) return { error: "当前密码不正确" };
   return { success: "密码已更新" };
 }
 

@@ -25,10 +25,10 @@ export default async function OrdersPage({
 }) {
   const params = await searchParams;
   const status = (params.status as OrderStatus | "all") || "all";
-  const platforms = listPlatforms();
-  const accounts = listAccounts(true);
+  const platforms = await listPlatforms();
+  const accounts = await listAccounts(true);
 
-  const orders = listOrders({
+  const orders = await listOrders({
     status,
     platformId: params.platform || undefined,
     accountId: params.account || undefined,

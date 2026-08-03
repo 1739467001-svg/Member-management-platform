@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // 兜底：若调度器没跑（比如服务器刚重启），登录时补跑当日任务
   await ensureDailyRun();
-  const expiring = getExpiringOrders();
+  const expiring = await getExpiringOrders();
 
   return (
     <div className="min-h-dvh">

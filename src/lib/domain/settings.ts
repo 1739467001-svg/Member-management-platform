@@ -1,94 +1,114 @@
 import "server-only";
-import { sqlite, db, platforms, priceRules, accounts } from "../db";
-import { eq, and } from "drizzle-orm";
+import { getSql, ready } from "../db";
 import { hashPassword, verifyPassword } from "../auth/password";
 import type { Account, Platform } from "../db/schema";
 
-export function getSetting(key: string): string | null {
-  const row = sqlite.prepare(`SELECT value FROM app_setting WHERE key = ?`).get(key) as
-    | { value: string }
-    | undefined;
-  return row?.value ?? null;
+export async function getSetting(key: string): Promise<string | null> {
+  await ready();
+  const rows = await getSql()<{ value: string }[]>`
+    SELECT value FROM app_setting WHERE key = ${key}`;
+  return rows[0]?.value ?? null;
 }
 
-export function setSetting(key: string, value: string): void {
-  sqlite
-    .prepare(
-      `INSERT INTO app_setting (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run(key, value);
-}
-
-export function getNumberSetting(key: string, fallback: number): number {
-  const raw = getSetting(key);
-  const n = raw === null ? NaN : Number(raw);
-  return Number.isFinite(n) ? n : fallback;
+export async function setSetting(key: string, value: string): Promise<void> {
+  await ready();
+  await getSql()`
+    INSERT INTO app_setting (key, value) VALUES (${key}, ${value})
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
 }
 
 /* ── 平台 ───────────────────────────────────────────── */
 
-export function listPlatforms(includeInactive = false): Platform[] {
-  const rows = db.select().from(platforms).all();
-  return rows
-    .filter((p) => includeInactive || p.active === 1)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+export async function listPlatforms(includeInactive = false): Promise<Platform[]> {
+  await ready();
+  const pg = getSql();
+  return includeInactive
+    ? await pg<Platform[]>`
+        SELECT id, name, aliases, color_slot AS "colorSlot",
+               sort_order AS "sortOrder", active
+        FROM platform ORDER BY sort_order`
+    : await pg<Platform[]>`
+        SELECT id, name, aliases, color_slot AS "colorSlot",
+               sort_order AS "sortOrder", active
+        FROM platform WHERE active = 1 ORDER BY sort_order`;
 }
 
 /** 解析器需要的轻量形态 */
-export function platformsForParser() {
-  return listPlatforms().map((p) => ({
+export async function platformsForParser() {
+  const rows = await listPlatforms();
+  return rows.map((p) => ({
     id: p.id,
     name: p.name,
     aliases: p.aliases.split(",").map((a) => a.trim()).filter(Boolean),
   }));
 }
 
-export function updatePlatform(
+export async function updatePlatform(
   id: string,
-  patch: Partial<{ name: string; aliases: string; active: number }>,
-): void {
-  db.update(platforms).set(patch).where(eq(platforms.id, id)).run();
+  patch: { name?: string; aliases?: string; active?: number },
+): Promise<void> {
+  await ready();
+  const pg = getSql();
+  if (patch.name !== undefined) {
+    await pg`UPDATE platform SET name = ${patch.name} WHERE id = ${id}`;
+  }
+  if (patch.aliases !== undefined) {
+    await pg`UPDATE platform SET aliases = ${patch.aliases} WHERE id = ${id}`;
+  }
+  if (patch.active !== undefined) {
+    await pg`UPDATE platform SET active = ${patch.active} WHERE id = ${id}`;
+  }
 }
 
 /* ── 会员账号 ───────────────────────────────────────── */
 
-export function listAccounts(includeInactive = false): Account[] {
-  return db
-    .select()
-    .from(accounts)
-    .all()
-    .filter((a) => includeInactive || a.active === 1)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+export async function listAccounts(includeInactive = false): Promise<Account[]> {
+  await ready();
+  const pg = getSql();
+  return includeInactive
+    ? await pg<Account[]>`
+        SELECT id, label, note, active, sort_order AS "sortOrder",
+               created_at AS "createdAt"
+        FROM account ORDER BY sort_order, label`
+    : await pg<Account[]>`
+        SELECT id, label, note, active, sort_order AS "sortOrder",
+               created_at AS "createdAt"
+        FROM account WHERE active = 1 ORDER BY sort_order, label`;
 }
 
 /** 解析器需要的轻量形态。停用的账号不参与识别，避免录到已裁撤的号上 */
-export function accountsForParser() {
-  return listAccounts().map((a) => ({ id: a.id, label: a.label }));
+export async function accountsForParser() {
+  const rows = await listAccounts();
+  return rows.map((a) => ({ id: a.id, label: a.label }));
 }
 
-export function createAccount(label: string, note = ""): string {
+export async function createAccount(label: string, note = ""): Promise<string> {
+  await ready();
   const trimmed = label.trim();
   const id = `acc-${trimmed}`;
-  db.insert(accounts)
-    .values({
-      id,
-      label: trimmed,
-      note,
-      active: 1,
-      sortOrder: listAccounts(true).length,
-      createdAt: Date.now(),
-    })
-    .onConflictDoNothing()
-    .run();
+  const existing = await listAccounts(true);
+  await getSql()`
+    INSERT INTO account (id, label, note, active, sort_order, created_at)
+    VALUES (${id}, ${trimmed}, ${note}, 1, ${existing.length}, ${Date.now()})
+    ON CONFLICT (id) DO NOTHING`;
   return id;
 }
 
-export function updateAccount(
+export async function updateAccount(
   id: string,
-  patch: Partial<{ label: string; note: string; active: number }>,
-): void {
-  db.update(accounts).set(patch).where(eq(accounts.id, id)).run();
+  patch: { label?: string; note?: string; active?: number },
+): Promise<void> {
+  await ready();
+  const pg = getSql();
+  if (patch.label !== undefined) {
+    await pg`UPDATE account SET label = ${patch.label} WHERE id = ${id}`;
+  }
+  if (patch.note !== undefined) {
+    await pg`UPDATE account SET note = ${patch.note} WHERE id = ${id}`;
+  }
+  if (patch.active !== undefined) {
+    await pg`UPDATE account SET active = ${patch.active} WHERE id = ${id}`;
+  }
 }
 
 /* ── 定价规则 ───────────────────────────────────────── */
@@ -101,48 +121,56 @@ export type PriceTable = Array<{
   returningPrice: number;
 }>;
 
-export function getPriceTable(): PriceTable {
-  return listPlatforms().map((p) => {
-    const rules = db.select().from(priceRules).where(eq(priceRules.platformId, p.id)).all();
-    return {
-      platformId: p.id,
-      platformName: p.name,
-      colorSlot: p.colorSlot,
-      newPrice: rules.find((r) => r.customerType === "new")?.price ?? 0,
-      returningPrice: rules.find((r) => r.customerType === "returning")?.price ?? 0,
-    };
-  });
+export async function getPriceTable(): Promise<PriceTable> {
+  await ready();
+  const rows = await getSql()<
+    Array<{
+      platformId: string;
+      platformName: string;
+      colorSlot: number;
+      newPrice: number | null;
+      returningPrice: number | null;
+    }>
+  >`
+    SELECT p.id AS "platformId", p.name AS "platformName", p.color_slot AS "colorSlot",
+           MAX(CASE WHEN r.customer_type = 'new' THEN r.price END) AS "newPrice",
+           MAX(CASE WHEN r.customer_type = 'returning' THEN r.price END) AS "returningPrice"
+    FROM platform p
+    LEFT JOIN price_rule r ON r.platform_id = p.id
+    WHERE p.active = 1
+    GROUP BY p.id, p.name, p.color_slot, p.sort_order
+    ORDER BY p.sort_order`;
+
+  return rows.map((r) => ({
+    platformId: r.platformId,
+    platformName: r.platformName,
+    colorSlot: r.colorSlot,
+    newPrice: r.newPrice ?? 0,
+    returningPrice: r.returningPrice ?? 0,
+  }));
 }
 
-export function setPrice(
+export async function setPrice(
   platformId: string,
   customerType: "new" | "returning",
   price: number,
-): void {
-  const existing = db
-    .select()
-    .from(priceRules)
-    .where(and(eq(priceRules.platformId, platformId), eq(priceRules.customerType, customerType)))
-    .get();
-
-  if (existing) {
-    db.update(priceRules).set({ price }).where(eq(priceRules.id, existing.id)).run();
-  } else {
-    db.insert(priceRules)
-      .values({ id: `${platformId}-${customerType}`, platformId, customerType, price })
-      .run();
-  }
+): Promise<void> {
+  await ready();
+  await getSql()`
+    INSERT INTO price_rule (id, platform_id, customer_type, price)
+    VALUES (${`${platformId}-${customerType}`}, ${platformId}, ${customerType}, ${price})
+    ON CONFLICT (platform_id, customer_type) DO UPDATE SET price = EXCLUDED.price`;
 }
 
 /* ── 密码 ───────────────────────────────────────────── */
 
-export function checkPassword(password: string): boolean {
-  const stored = getSetting("passwordHash");
+export async function checkPassword(password: string): Promise<boolean> {
+  const stored = await getSetting("passwordHash");
   return stored ? verifyPassword(password, stored) : false;
 }
 
-export function changePassword(current: string, next: string): boolean {
-  if (!checkPassword(current)) return false;
-  setSetting("passwordHash", hashPassword(next));
+export async function changePassword(current: string, next: string): Promise<boolean> {
+  if (!(await checkPassword(current))) return false;
+  await setSetting("passwordHash", hashPassword(next));
   return true;
 }

@@ -50,22 +50,18 @@ export default function ErrorPage({
               <strong>常见原因：</strong>
               <ul className="mt-1 list-disc space-y-1 pl-4">
                 <li>
-                  部署在 Vercel / Netlify / 函数计算等<strong>无服务器平台</strong> ——
-                  这类平台文件系统只读，本机 SQLite 用不了，需要改用云服务器或网络数据库
+                  <strong>没配 DATABASE_URL</strong> —— Vercel 上到 Storage →
+                  Create Database 建一个 Postgres（选 Neon），它会自动注入连接串，
+                  然后 <strong>Redeploy 一次</strong>让新变量生效
                 </li>
                 <li>
-                  Docker 用了 <code>bind mount</code>，宿主目录属主不是容器内用户 ——
-                  执行 <code>chown -R 1001:1001 &lt;宿主目录&gt;</code>
+                  连接串复制错了或数据库已暂停 —— Neon 免费版闲置会自动休眠，
+                  首次访问需要几秒唤醒，重试一次通常就好
                 </li>
-                <li>
-                  <code>DATABASE_PATH</code> 写成了相对路径 —— standalone 部署必须用绝对路径
-                </li>
-                <li>
-                  在 x64 机器构建后拷到 ARM 服务器 —— 需在目标机重新构建
-                </li>
+                <li>自托管时 Postgres 容器还没起来，或连接串里的主机名不对</li>
               </ul>
               <p className="mt-2">
-                访问 <code>/api/health</code> 可以看到数据库路径、可写性与运行架构。
+                访问 <code>/api/health</code> 可以看到连接串是否注入、数据库能否连通。
               </p>
             </div>
           )}

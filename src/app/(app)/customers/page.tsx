@@ -16,13 +16,13 @@ export default async function CustomersPage({
   const params = await searchParams;
   const tier = params.tier as CustomerTier | undefined;
 
-  const all = listCustomers();
-  const customers = listCustomers({
+  const all = await listCustomers();
+  const customers = await listCustomers({
     tier,
     search: params.q || undefined,
     tag: params.tag || undefined,
   });
-  const conversion = conversionStats();
+  const conversion = await conversionStats();
 
   const counts = TIER_ORDER.reduce<Record<string, number>>((acc, t) => {
     acc[t] = all.filter((c) => c.tier === t).length;

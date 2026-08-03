@@ -16,11 +16,11 @@ export default async function CostsPage({
   const params = await searchParams;
   const year = Number(params.year) || Number(today().slice(0, 4));
 
-  const platforms = listPlatforms();
-  const accounts = listAccounts();
-  const matrix = costMatrix(year);
-  const recent = listCosts({ limit: 30 });
-  const month = summaryFor("month");
+  const platforms = await listPlatforms();
+  const accounts = await listAccounts();
+  const matrix = await costMatrix(year);
+  const recent = await listCosts({ limit: 30 });
+  const month = await summaryFor("month");
 
   return (
     <div>

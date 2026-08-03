@@ -1,20 +1,26 @@
 /**
  * 演示数据种子脚本。
- *   node scripts/seed-demo.mjs
+ *   DATABASE_URL=postgres://... node scripts/seed-demo.mjs
  * 仅用于试用/演示，会写入若干客户、订单与成本记录。
- * 正式使用前请删除 data/app.db 重新开始。
+ * 表结构由应用首次访问时自动创建，所以请先打开一次网站再跑本脚本。
  */
-import Database from "better-sqlite3";
+import postgres from "postgres";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+
+const url =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_POSTGRES_URL;
+
+if (!url) {
+  console.error("请先设置 DATABASE_URL，例如：");
+  console.error("  DATABASE_URL='postgres://user:pass@host/db' node scripts/seed-demo.mjs");
+  process.exit(1);
+}
+
+const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
 
 const DAY = 86_400_000;
-const dbPath = resolve(process.env.DATABASE_PATH || "./data/app.db");
-mkdirSync(dirname(dbPath), { recursive: true });
-
-const db = new Database(dbPath);
-
 const iso = (d) => new Date(d).toISOString().slice(0, 10);
 const todayMs = Date.parse(iso(Date.now()));
 const shift = (days) => iso(todayMs + days * DAY);
@@ -52,44 +58,43 @@ const PEOPLE = [
   { name: "陈九", region: "福建厦门", device: "PC", note: "到期后没再续，可回访", plans: [{ platform: "youku", endsIn: -20, cycles: 1, account: "181" }] },
 ];
 
-const now = Date.now();
+// 每个平台的会员开在哪个账号上，成本就记到那个号
+const COST = [
+  { platform: "iqiyi", account: "178", amount: 30 },
+  { platform: "tencent", account: "1815", amount: 33 },
+  { platform: "bilibili", account: "181", amount: 25 },
+  { platform: "mango", account: "135", amount: 20 },
+  { platform: "youku", account: "181", amount: 26 },
+];
 
-const insertCustomer = db.prepare(
-  `INSERT INTO customer (id, name, note, region, device, total_orders, total_revenue,
-     renewal_count, platform_count, score, tier, tags, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 'new', '', ?, ?)`,
-);
+try {
+  const tableCheck = await sql`SELECT to_regclass('public.rental_order') AS t`;
+  if (!tableCheck[0]?.t) {
+    console.error("表还没建好。请先在浏览器里打开一次网站（会自动建表），再运行本脚本。");
+    process.exit(1);
+  }
 
-const insertOrder = db.prepare(
-  `INSERT INTO rental_order (id, customer_id, platform_id, price, start_date, duration_days,
-     end_date, duration_type, customer_type, device, region, note, suggested_price,
-     renewed_from_id, account_id, raw_text, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, 30, ?, 'month', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-);
+  const existing = await sql`SELECT COUNT(*)::int AS n FROM rental_order`;
+  if (existing[0].n > 0) {
+    console.log(`数据库已有 ${existing[0].n} 条订单，跳过演示数据写入。`);
+    console.log("如需重来：TRUNCATE rental_order, cost_record, customer CASCADE;");
+    process.exit(0);
+  }
 
-const insertCost = db.prepare(
-  `INSERT INTO cost_record (id, platform_id, account_id, amount, cost_date, period_days, category, note, raw_text, created_at)
-   VALUES (?, ?, ?, ?, ?, 30, 'membership', ?, '', ?)`,
-);
+  const now = Date.now();
+  let orderCount = 0;
 
-const existing = db.prepare(`SELECT COUNT(*) AS n FROM rental_order`).get();
-if (existing.n > 0) {
-  console.log(`数据库已有 ${existing.n} 条订单，跳过演示数据写入。`);
-  console.log("如需重新生成：rm -rf data/ 后先启动一次应用建表，再运行本脚本。");
-  process.exit(0);
-}
-
-let orderCount = 0;
-
-db.transaction(() => {
   for (const person of PEOPLE) {
     const customerId = randomUUID();
-    insertCustomer.run(customerId, person.name, person.note, person.region, person.device, now, now);
+    await sql`
+      INSERT INTO customer (id, name, note, region, device, total_orders, total_revenue,
+        renewal_count, platform_count, score, tier, tags, created_at, updated_at)
+      VALUES (${customerId}, ${person.name}, ${person.note}, ${person.region},
+        ${person.device}, 0, 0, 0, 0, 0, 'new', '', ${now}, ${now})`;
 
     for (const plan of person.plans) {
       const price = PRICES[plan.platform];
       let previousId = null;
-
       // 最后一轮的到期日 = 今天 + endsIn，往前每 30 天一轮
       const lastStart = plan.endsIn - 30;
 
@@ -99,24 +104,18 @@ db.transaction(() => {
         const type = i === 0 ? "new" : "returning";
         const orderId = randomUUID();
 
-        insertOrder.run(
-          orderId,
-          customerId,
-          plan.platform,
-          price[type],
-          startDate,
-          endDate,
-          type,
-          person.device,
-          person.region,
-          i === 0 ? person.note : "",
-          price[type],
-          previousId,
-          plan.account ? `acc-${plan.account}` : null,
-          `${person.name} ${plan.platform} ${startDate} ${price[type]}`,
-          now,
-          now,
-        );
+        await sql`
+          INSERT INTO rental_order (id, customer_id, platform_id, account_id, price,
+            start_date, duration_days, end_date, duration_type, customer_type,
+            device, region, note, suggested_price, renewed_from_id, raw_text,
+            created_at, updated_at)
+          VALUES (${orderId}, ${customerId}, ${plan.platform},
+            ${plan.account ? `acc-${plan.account}` : null}, ${price[type]},
+            ${startDate}, 30, ${endDate}, 'month', ${type},
+            ${person.device}, ${person.region}, ${i === 0 ? person.note : ""},
+            ${price[type]}, ${previousId},
+            ${`${person.name} ${plan.platform} ${startDate} ${price[type]}`},
+            ${now}, ${now})`;
 
         previousId = orderId;
         orderCount++;
@@ -125,14 +124,6 @@ db.transaction(() => {
   }
 
   // 成本：每个平台每月 1 号续一次月卡，覆盖最近 5 个月
-  // 每个平台的会员开在哪个账号上，成本就记到那个号
-  const COST = [
-    { platform: "iqiyi", account: "178", amount: 30 },
-    { platform: "tencent", account: "1815", amount: 33 },
-    { platform: "bilibili", account: "181", amount: 25 },
-    { platform: "mango", account: "135", amount: 20 },
-    { platform: "youku", account: "181", amount: 26 },
-  ];
   const firstOfMonth = (monthsAgo) => {
     const d = new Date(todayMs);
     return iso(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - monthsAgo, 1));
@@ -141,24 +132,20 @@ db.transaction(() => {
   for (let monthsAgo = 4; monthsAgo >= 0; monthsAgo--) {
     const date = firstOfMonth(monthsAgo);
     for (const { platform, account, amount } of COST) {
-      insertCost.run(
-        randomUUID(),
-        platform,
-        `acc-${account}`,
-        amount,
-        date,
-        `${Number(date.slice(5, 7))}月月卡续费`,
-        now,
-      );
+      await sql`
+        INSERT INTO cost_record (id, platform_id, account_id, amount, cost_date,
+          period_days, category, note, raw_text, created_at)
+        VALUES (${randomUUID()}, ${platform}, ${`acc-${account}`}, ${amount}, ${date},
+          30, 'membership', ${`${Number(date.slice(5, 7))}月月卡续费`}, '', ${now})`;
       costCount++;
     }
   }
-  console.log(`已写入 ${costCount} 条成本记录`);
-})();
 
-// 让下次启动重新计算客户评分
-db.prepare(`DELETE FROM app_setting WHERE key = 'lastDailyRun'`).run();
+  // 让下次访问重新计算客户评分
+  await sql`DELETE FROM app_setting WHERE key = 'lastDailyRun'`;
 
-console.log(`已写入 ${PEOPLE.length} 位客户、${orderCount} 条订单`);
-console.log("启动应用后系统会自动重算客户评分与分层。");
-db.close();
+  console.log(`已写入 ${PEOPLE.length} 位客户、${orderCount} 条订单、${costCount} 条成本记录`);
+  console.log("刷新网站后系统会自动重算客户评分与分层。");
+} finally {
+  await sql.end();
+}

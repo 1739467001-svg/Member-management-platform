@@ -18,10 +18,10 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const customer = getCustomer(id);
+  const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const orders = listOrders({ customerId: id });
+  const orders = await listOrders({ customerId: id });
   const tier = TIER_META[customer.tier];
   const avgPrice = customer.totalOrders > 0 ? customer.totalRevenue / customer.totalOrders : 0;
 

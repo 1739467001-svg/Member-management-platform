@@ -1,23 +1,39 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: hhstudio-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: hhstudio
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - hhstudio-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hh -d hhstudio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build: .
-    container_name: hhstudio-membership
+    container_name: hhstudio-app
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       # 只绑到本机，前面用 Nginx/Caddy 反代并配 HTTPS
       - "127.0.0.1:3000:3000"
     environment:
+      DATABASE_URL: postgres://hh:${POSTGRES_PASSWORD}@db:5432/hhstudio
       # 必改：openssl rand -hex 32
       AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET}
-      # 首次启动的登录密码，之后可在设置页修改
-      INITIAL_PASSWORD: ${INITIAL_PASSWORD:-hhstudio2026}
-      # 供服务器 crontab 兜底调用每日任务
-      CRON_TOKEN: ${CRON_TOKEN:-change-me}
+      # 首次建库时的登录密码，之后可在设置页修改
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:-0000}
+      CRON_SECRET: ${CRON_SECRET:-change-me}
       TZ: ${TZ:-Asia/Shanghai}
-      DATABASE_PATH: /data/app.db
-      BACKUP_PATH: /data/backup
-    volumes:
-      - hhstudio-data:/data
 
 volumes:
-  hhstudio-data:
+  hhstudio-pgdata:

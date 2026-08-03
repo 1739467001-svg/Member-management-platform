@@ -14,10 +14,10 @@ import { TZ, today } from "@/lib/date";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const prices = getPriceTable();
-  const platforms = listPlatforms(true);
-  const accounts = listAccounts(true);
-  const lastRun = getSetting("lastDailyRun");
+  const prices = await getPriceTable();
+  const platforms = await listPlatforms(true);
+  const accounts = await listAccounts(true);
+  const lastRun = await getSetting("lastDailyRun");
 
   return (
     <div>
