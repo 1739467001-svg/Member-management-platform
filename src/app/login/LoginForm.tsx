@@ -17,8 +17,10 @@ function SubmitButton() {
   );
 }
 
+type State = { error?: string; diagnostic?: boolean } | null;
+
 export function LoginForm() {
-  const [state, formAction] = useActionState(loginAction, null as { error?: string } | null);
+  const [state, formAction] = useActionState(loginAction, null as State);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -38,9 +40,21 @@ export function LoginForm() {
       </div>
 
       {state?.error && (
-        <p role="alert" className="tint-critical rounded-lg px-3 py-2 text-xs text-critical">
-          {state.error}
-        </p>
+        <div
+          role="alert"
+          className="tint-critical rounded-lg px-3 py-2 text-xs text-critical"
+        >
+          {/* 环境类错误可能有多行，保留换行 */}
+          <p className="whitespace-pre-line leading-relaxed">{state.error}</p>
+          {state.diagnostic && (
+            <a
+              href="/api/health"
+              className="mt-1.5 inline-block underline underline-offset-2"
+            >
+              打开 /api/health 查看部署自检
+            </a>
+          )}
+        </div>
       )}
 
       <SubmitButton />

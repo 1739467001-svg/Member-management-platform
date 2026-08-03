@@ -118,19 +118,69 @@ CREATE TABLE IF NOT EXISTS app_setting (
 );
 `;
 
+/** 数据库初始化失败时抛这个，带上足够定位问题的上下文 */
+export class DatabaseInitError extends Error {
+  constructor(
+    readonly dbPath: string,
+    readonly stage: string,
+    readonly cause: unknown,
+  ) {
+    const code = (cause as NodeJS.ErrnoException)?.code ?? "";
+    super(`数据库初始化失败（${stage}）：${dbPath}${code ? ` [${code}]` : ""}`);
+    this.name = "DatabaseInitError";
+  }
+
+  /** 针对常见错误码给出可直接照做的处理建议 */
+  get hint(): string {
+    const code = (this.cause as NodeJS.ErrnoException)?.code;
+    switch (code) {
+      case "EROFS":
+        return "文件系统只读。若部署在 Vercel / Netlify / 函数计算等无服务器平台，本机 SQLite 无法使用，需要换成网络数据库或改用云服务器（ECS / 轻量应用服务器 / VPS）。";
+      case "EACCES":
+      case "EPERM":
+        return `没有写入权限。Docker 用 bind mount 时宿主目录属主要对上：chown -R 1001:1001 <宿主目录>；或改用具名卷（docker compose 默认已是具名卷）。`;
+      case "ENOENT":
+        return "上级目录不存在且无法创建，请检查 DATABASE_PATH 是否写成了绝对路径。";
+      case "ENOSPC":
+        return "磁盘空间不足。";
+      default:
+        if (String(this.cause).includes("invalid ELF header") ||
+            String(this.cause).includes("cannot open shared object")) {
+          return "better-sqlite3 的原生模块与当前系统架构不匹配。多半是在 x64 机器上构建后拷到了 ARM 服务器：请在目标服务器上重新构建，或使用 Docker 构建镜像。";
+        }
+        return "请查看服务端日志中的原始错误。";
+    }
+  }
+}
+
 function createConnection() {
   // 路径来自环境变量，打包器无法静态分析 —— 产物裁剪交给
   // next.config.ts 的 outputFileTracingExcludes 处理
   const dbPath = resolve(process.env.DATABASE_PATH || "./data/app.db");
-  mkdirSync(dirname(dbPath), { recursive: true });
 
-  const sqlite = new Database(dbPath);
-  sqlite.exec(DDL);
-  migrate(sqlite);
+  let stage = "创建数据目录";
+  try {
+    mkdirSync(dirname(dbPath), { recursive: true });
 
-  const db = drizzle(sqlite, { schema });
-  seed(sqlite);
-  return { sqlite, db };
+    stage = "打开数据库文件";
+    const sqlite = new Database(dbPath);
+
+    stage = "建表";
+    sqlite.exec(DDL);
+
+    stage = "迁移";
+    migrate(sqlite);
+
+    stage = "写入预置数据";
+    const db = drizzle(sqlite, { schema });
+    seed(sqlite);
+
+    return { sqlite, db };
+  } catch (error) {
+    // 原始错误进日志，包装后的错误带提示给到页面
+    console.error(`[db] ${stage}失败 path=${dbPath}`, error);
+    throw new DatabaseInitError(dbPath, stage, error);
+  }
 }
 
 /**

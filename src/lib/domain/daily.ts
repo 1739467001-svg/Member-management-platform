@@ -81,12 +81,18 @@ export function hasRunToday(): boolean {
   return getSetting("lastDailyRun") === today();
 }
 
-/** 若今天还没跑过就补跑一次（应用启动时与访问看板时调用） */
+/**
+ * 若今天还没跑过就补跑一次（应用启动时与访问看板时调用）。
+ *
+ * 整段都包在 try 里：hasRunToday() 也要读数据库，存储没配好时它会先抛错。
+ * 这是个后台维护任务，绝不该因为它失败就让整个应用起不来 ——
+ * 尤其不能连带把 /api/health 这种排障入口也弄挂。
+ */
 export async function ensureDailyRun(): Promise<void> {
-  if (hasRunToday()) return;
   try {
+    if (hasRunToday()) return;
     await runDailyTasks();
   } catch (error) {
-    console.error("[daily] 每日任务执行失败:", error);
+    console.error("[daily] 每日任务跳过（数据库不可用或执行失败）:", error);
   }
 }

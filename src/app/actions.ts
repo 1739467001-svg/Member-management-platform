@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { SESSION_COOKIE, SESSION_MAX_AGE, createSessionToken } from "@/lib/auth/session";
+import { DatabaseInitError } from "@/lib/db";
 import {
   checkPassword,
   changePassword,
@@ -59,7 +60,18 @@ async function shouldUseSecureCookie(): Promise<boolean> {
 export async function loginAction(_prev: unknown, formData: FormData) {
   const password = String(formData.get("password") ?? "");
   if (!password) return { error: "请输入密码" };
-  if (!checkPassword(password)) return { error: "密码不正确" };
+
+  // 校验密码要读数据库。存储没配好时这里会抛错，
+  // 直接把原因显示在登录框下面，比甩一个 500 白屏有用得多。
+  try {
+    if (!checkPassword(password)) return { error: "密码不正确" };
+  } catch (error) {
+    if (error instanceof DatabaseInitError) {
+      return { error: `${error.message}\n${error.hint}`, diagnostic: true };
+    }
+    console.error("[login]", error);
+    return { error: "登录失败，请查看服务端日志或访问 /api/health 自检", diagnostic: true };
+  }
 
   const jar = await cookies();
   jar.set(SESSION_COOKIE, await createSessionToken(), {

@@ -29,6 +29,6 @@ export const config = {
    * 若被重定向到登录页，「添加到主屏幕」就装不上图标。
    */
   matcher: [
-    "/((?!api/cron|_next/static|_next/image|favicon\\.ico|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api/cron|api/health|_next/static|_next/image|favicon\\.ico|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
