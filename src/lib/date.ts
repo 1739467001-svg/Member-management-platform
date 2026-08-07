@@ -4,7 +4,26 @@
  * 「今天」按业务时区（默认 Asia/Shanghai）取。
  */
 
-export const TZ = process.env.TZ || "Asia/Shanghai";
+const DEFAULT_TZ = "Asia/Shanghai";
+
+/**
+ * Some hosting runtimes expose their system UTC setting as `:UTC`.
+ * It is not a valid Intl time-zone identifier, so treat it like an unset
+ * business-timezone setting and keep the application default.
+ */
+function resolveTimeZone(raw: string | undefined): string {
+  const candidate = raw?.trim();
+  if (!candidate || candidate === ":UTC") return DEFAULT_TZ;
+
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: candidate }).format();
+    return candidate;
+  } catch {
+    return DEFAULT_TZ;
+  }
+}
+
+export const TZ = resolveTimeZone(process.env.TZ);
 const DAY_MS = 86_400_000;
 
 /** 业务时区下的今天 */

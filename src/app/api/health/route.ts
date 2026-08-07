@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSql, ready } from "@/lib/db";
+import { TZ } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function GET() {
     platform: process.platform,
     arch: process.arch,
     node: process.version,
-    tz: process.env.TZ || "(未设置，将按 UTC 计算日期)",
+    tz: TZ,
     vercel: Boolean(process.env.VERCEL),
     region: process.env.VERCEL_REGION ?? null,
   };
